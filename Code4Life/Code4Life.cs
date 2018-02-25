@@ -19,6 +19,8 @@ class Molecules
     public int C { get; set; }
     public int D { get; set; }
     public int E { get; set; }
+
+    public int TotalMolecules => A + B + C + D + E;
     
     public void AddMoleculeType(string moleculeType)
     {
@@ -91,10 +93,10 @@ class Molecules
     public static bool operator >=(Molecules m1, Molecules m2)
     {
         return m1.A >= m2.A
-            || m1.B >= m2.B
-            || m1.C >= m2.C
-            || m1.D >= m2.D
-            || m1.E >= m2.E;
+            && m1.B >= m2.B
+            && m1.C >= m2.C
+            && m1.D >= m2.D
+            && m1.E >= m2.E;
     }
 
     public static bool operator >(Molecules m1, Molecules m2)
@@ -125,11 +127,6 @@ class Molecules
             D = D,
             E = E
         };
-    }
-    
-    public int TotalMolecules()
-    {
-        return A + B + C + D + E;
     }
     
     public override string ToString()
@@ -341,27 +338,34 @@ class Simulation
                 .Concat(cloudSampleMoves)
                 .ToArray();
             case "MOLECULES":
-                var moleculePickupMoves = _player.CarriedMolecules.TotalMolecules() < 10
-                    ? new Move[]
-                    {
-                        new Move { Action = "CONNECT", MoleculeType = "A" },
-                        new Move { Action = "CONNECT", MoleculeType = "B" },
-                        new Move { Action = "CONNECT", MoleculeType = "C" },
-                        new Move { Action = "CONNECT", MoleculeType = "D" },
-                        new Move { Action = "CONNECT", MoleculeType = "E" }
-                    }
-                    : noMoves;
+                var pickupMoleculeMoves = new List<Move>();
+                if (_player.CarriedMolecules.TotalMolecules < 10)
+                {
+                    if (_availableMolecules.A > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "A" });
+                    if (_availableMolecules.B > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "B" });
+                    if (_availableMolecules.C > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "C" });
+                    if (_availableMolecules.D > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "D" });
+                    if (_availableMolecules.E > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "E" });
+                }
+                
                 return new Move[]
                 {
                     new Move { Action = "GOTO", Module = "SAMPLES" },
                     new Move { Action = "GOTO", Module = "DIAGNOSIS" },
                     new Move { Action = "GOTO", Module = "LABORATORY" }
                 }
-                .Concat(moleculePickupMoves)
+                .Concat(pickupMoleculeMoves)
                 .ToArray();
             case "LABORATORY":
                 var playerSampleDropoffMoves = _playerSamples
-                    .Where(s => s.HasMoleculesRequired(_player.CarriedMolecules + _player.MolecularExpertise))
+                    .Where(s =>
+                        s.IsDiagnosed() &&
+                        s.HasMoleculesRequired(_player.CarriedMolecules + _player.MolecularExpertise))
                     .Select(s => new Move { Action = "CONNECT", SampleId = $"{s.Id}" });
                 return new Move[]
                 {
