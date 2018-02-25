@@ -278,7 +278,7 @@ class Move
 
 class Simulation
 {
-    private Robot _player;
+    private Robot Player;
     private Robot _opponent;
     private Molecules _availableMolecules;
     private Sample[] _samples;
@@ -295,11 +295,11 @@ class Simulation
         {0, 3, 4, 3, 0}
     };
 
-    public int PlayerScore => _player.Score;
+    public int PlayerScore => Player.Score;
 
     public Simulation(Robot player, Robot opponent, Molecules availableMolecules, Sample[] samples)
     {
-        _player = player;
+        Player = player;
         _opponent = opponent;
         _availableMolecules = availableMolecules;
         _samples = samples;
@@ -307,23 +307,27 @@ class Simulation
 
     public Simulation Move(Move move)
     {
+        var simulation = Copy();
         switch (move.Action)
         {
+            case "WAIT":
+                simulation.Player.Eta--;
+                break;
             case "GOTO":
-                _player.Eta = _moveEtas[(int)_player.Module, (int)move.Module];
-                _player.Module = move.Module;
+                simulation.Player.Eta = _moveEtas[(int)simulation.Player.Module, (int)move.Module];
+                simulation.Player.Module = move.Module;
                 break;
         }
 
-        return this;
+        return simulation;
     }
 
     public Move[] GetPossibleMoves()
     {
-        if (_player.Travelling)
+        if (Player.Travelling)
             return new Move[] {};
 
-        return GetMovesFromModule(_player.Module);
+        return GetMovesFromModule(Player.Module);
     }
 
     private Move[] GetMovesFromModule(Module module)
@@ -373,7 +377,7 @@ class Simulation
                 .ToArray();
             case Module.Molecules:
                 var pickupMoleculeMoves = new List<Move>();
-                if (_player.CarriedMolecules.TotalMolecules < 10)
+                if (Player.CarriedMolecules.TotalMolecules < 10)
                 {
                     if (_availableMolecules.A > 0)
                         pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "A" });
@@ -399,7 +403,7 @@ class Simulation
                 var playerSampleDropoffMoves = _playerSamples
                     .Where(s =>
                         s.IsDiagnosed() &&
-                        s.HasMoleculesRequired(_player.CarriedMolecules + _player.MolecularExpertise))
+                        s.HasMoleculesRequired(Player.CarriedMolecules + Player.MolecularExpertise))
                     .Select(s => new Move { Action = "CONNECT", SampleId = $"{s.Id}" });
                 return new Move[]
                 {
@@ -417,11 +421,17 @@ class Simulation
     public Simulation Copy()
     {
         return new Simulation(
-            _player.Copy(),
+            Player.Copy(),
             _opponent.Copy(),
             _availableMolecules.Copy(),
             _samples.Select(s => s.Copy()).ToArray());
     }
+}
+
+class SimulationMove
+{
+    public Simulation Simulation { get; set; }
+    public Move Move { get; set; }
 }
 
 class SimulationOrchestrator
@@ -435,28 +445,50 @@ class SimulationOrchestrator
 
     public string CalculateBestMove()
     {
-        var startPossibleMovesTime = DateTime.Now;
         var possibleMoves = CurrentSimulationSnapshot.GetPossibleMoves();
-        Console.Error.WriteLine($"Calculated possible moves in {(DateTime.Now - startPossibleMovesTime).Milliseconds} milliseconds.");
 
         if (!possibleMoves.Any())
             return "TRAVELLING";
 
-        Move bestMove = null;
-        var maxScoreIncrease = -1;
+        var bestMove = 
+            GetNextPossibleSimulations(new SimulationMove { Simulation = CurrentSimulationSnapshot, Move = null }, 0)
+                .OrderByDescending(s => s.Simulation.PlayerScore)
+                .First()
+                .Move;
+
+        return bestMove?.ToString() ?? "No move";
+    }
+
+    private SimulationMove[] GetNextPossibleSimulations(SimulationMove simulationMove, int lookAhead)
+    {
+        var possibleMoves = simulationMove.Simulation.GetPossibleMoves();
+
+        List<SimulationMove> nextPossibleSimulations = new List<SimulationMove>();
+        if (!possibleMoves.Any())
+        {
+            nextPossibleSimulations.Add(
+                new SimulationMove
+                {
+                    Simulation = simulationMove.Simulation.Move(new Move { Action = "WAIT" }),
+                    Move = simulationMove.Move
+                });
+        }
         foreach (var possibleMove in possibleMoves)
         {
-            var startScoreIncreaseCalculation = DateTime.Now;
-            var scoreIncrease = MakeMove(CurrentSimulationSnapshot.Copy(), possibleMove).PlayerScore - CurrentSimulationSnapshot.PlayerScore;
-            Console.Error.WriteLine($"Calculated score increase in {(DateTime.Now - startScoreIncreaseCalculation).Milliseconds} milliseconds.");
-            if (scoreIncrease > maxScoreIncrease)
-            {
-                maxScoreIncrease = scoreIncrease;
-                bestMove = possibleMove;
-            }
+            nextPossibleSimulations.Add(
+                new SimulationMove
+                {
+                    Simulation = simulationMove.Simulation.Move(possibleMove),
+                    Move = simulationMove.Move
+                });
         }
 
-        return bestMove.ToString();
+        return lookAhead == 0
+            ? nextPossibleSimulations
+                .ToArray()
+            : nextPossibleSimulations
+                .SelectMany(s => GetNextPossibleSimulations(s, lookAhead - 1))
+                .ToArray();
     }
 
     private Simulation MakeMove(Simulation simulation, Move playerMove)
