@@ -140,9 +140,18 @@ class Molecules
     }
 }
 
+enum Module
+{
+    Startpos,
+    Samples,
+    Diagnosis,
+    Molecules,
+    Laboratory
+}
+
 class Robot
 {
-    public string Module { get; set; }
+    public Module Module { get; set; }
     public int Eta { get; set; }
     public int Score { get; set; }
     public Molecules CarriedMolecules { get; set; }
@@ -152,11 +161,19 @@ class Robot
 
     public Robot()
     {
-        var input = Console.ReadLine();
-        Console.Error.WriteLine($"Robot: {input}");
-        string[] inputs = input.Split(' ');
+        string[] inputs = Console.ReadLine().Split(' ');
 
-        Module = inputs[0];
+        var module = inputs[0];
+        if (module == "STARTPOS")
+            Module = Module.Startpos;
+        if (module == "SAMPLES")
+            Module = Module.Samples;
+        if (module == "DIAGNOSIS")
+            Module = Module.Diagnosis;
+        if (module == "MOLECULES")
+            Module = Module.Molecules;
+        if (module == "LABORATORY")
+            Module = Module.Laboratory;
         Eta = int.Parse(inputs[1]);
         Score = int.Parse(inputs[2]);
         CarriedMolecules = new Molecules
@@ -177,16 +194,18 @@ class Robot
         };
     }
 
+    public Robot(Module module, int eta, int score, Molecules carriedMolecules, Molecules molecularExpertise)
+    {
+        Module = module;
+        Eta = eta;
+        Score = score;
+        CarriedMolecules = carriedMolecules;
+        MolecularExpertise = molecularExpertise;
+    }
+
     public Robot Copy()
     {
-        return new Robot
-        {
-            Module = Module,
-            Eta = Eta,
-            Score = Score,
-            CarriedMolecules = CarriedMolecules.Copy(),
-            MolecularExpertise = MolecularExpertise.Copy()
-        };
+        return new Robot(Module, Eta, Score, CarriedMolecules.Copy(), MolecularExpertise.Copy());
     }
 }
 
@@ -231,7 +250,7 @@ class Sample
 class Move
 {
     public string Action { get; set; }
-    public string Module { get; set; }
+    public Module Module { get; set; }
     public int SampleRank { get; set; }
     public string SampleId { get; set; }
     public string MoleculeType { get; set; }
@@ -267,6 +286,17 @@ class Simulation
     private IEnumerable<Sample> _playerSamples => _samples.Where(s => s.SampleLocation == SampleLocation.Player);
     private IEnumerable<Sample> _cloudSamples => _samples.Where(s => s.SampleLocation == SampleLocation.Cloud);
 
+    private int[,] _moveEtas = new int[5,5]
+    {
+        {0, 2, 2, 2, 2},
+        {0, 0, 3, 3, 3},
+        {0, 3, 0, 3, 4},
+        {0, 3, 3, 0, 3},
+        {0, 3, 4, 3, 0}
+    };
+
+    public int PlayerScore => _player.Score;
+
     public Simulation(Robot player, Robot opponent, Molecules availableMolecules, Sample[] samples)
     {
         _player = player;
@@ -275,14 +305,18 @@ class Simulation
         _samples = samples;
     }
 
-    // public Simulation MakeMove(Move playerMove)
-    // {
-    //     return new Simulation(
-    //         _player.Copy(),
-    //         _opponent.Copy(),
-    //         _availableMolecules.Copy(),
-    //         _samples.Select(s => s.Copy()).ToArray());
-    // }
+    public Simulation Move(Move move)
+    {
+        switch (move.Action)
+        {
+            case "GOTO":
+                _player.Eta = _moveEtas[(int)_player.Module, (int)move.Module];
+                _player.Module = move.Module;
+                break;
+        }
+
+        return this;
+    }
 
     public Move[] GetPossibleMoves()
     {
@@ -292,21 +326,21 @@ class Simulation
         return GetMovesFromModule(_player.Module);
     }
 
-    private Move[] GetMovesFromModule(string module)
+    private Move[] GetMovesFromModule(Module module)
     {
         var noMoves = new Move[] {};
 
         switch (module)
         {
-            case "START_POS":
+            case Module.Startpos:
                 return new Move[]
                 {
-                    new Move { Action = "GOTO", Module = "SAMPLES" },
-                    new Move { Action = "GOTO", Module = "DIAGNOSIS" },
-                    new Move { Action = "GOTO", Module = "MOLECULES" },
-                    new Move { Action = "GOTO", Module = "LABORATORY" }
+                    new Move { Action = "GOTO", Module = Module.Samples },
+                    new Move { Action = "GOTO", Module = Module.Diagnosis },
+                    new Move { Action = "GOTO", Module = Module.Molecules },
+                    new Move { Action = "GOTO", Module = Module.Laboratory }
                 };
-            case "SAMPLES":
+            case Module.Samples:
                 var samplePickupMoves = _playerSamples.Count() < 3
                     ? new Move[]
                     {
@@ -317,27 +351,27 @@ class Simulation
                     : noMoves;
                 return new Move[]
                 {
-                    new Move { Action = "GOTO", Module = "DIAGNOSIS" },
-                    new Move { Action = "GOTO", Module = "MOLECULES" },
-                    new Move { Action = "GOTO", Module = "LABORATORY" }
+                    new Move { Action = "GOTO", Module = Module.Diagnosis },
+                    new Move { Action = "GOTO", Module = Module.Molecules },
+                    new Move { Action = "GOTO", Module = Module.Laboratory }
                 }
                 .Concat(samplePickupMoves)
                 .ToArray();
-            case "DIAGNOSIS":
+            case Module.Diagnosis:
                 var playerSampleMoves = _playerSamples.Select(s => new Move { Action = "CONNECT", SampleId = $"{s.Id}" });
                 var cloudSampleMoves = _playerSamples.Count() < 3
                     ? _cloudSamples.Select(s => new Move { Action = "CONNECT", SampleId = $"{s.Id}" })
                     : noMoves;
                 return new Move[]
                 {
-                    new Move { Action = "GOTO", Module = "SAMPLES" },
-                    new Move { Action = "GOTO", Module = "MOLECULES" },
-                    new Move { Action = "GOTO", Module = "LABORATORY" }
+                    new Move { Action = "GOTO", Module = Module.Samples },
+                    new Move { Action = "GOTO", Module = Module.Molecules },
+                    new Move { Action = "GOTO", Module = Module.Laboratory }
                 }
                 .Concat(playerSampleMoves)
                 .Concat(cloudSampleMoves)
                 .ToArray();
-            case "MOLECULES":
+            case Module.Molecules:
                 var pickupMoleculeMoves = new List<Move>();
                 if (_player.CarriedMolecules.TotalMolecules < 10)
                 {
@@ -355,13 +389,13 @@ class Simulation
                 
                 return new Move[]
                 {
-                    new Move { Action = "GOTO", Module = "SAMPLES" },
-                    new Move { Action = "GOTO", Module = "DIAGNOSIS" },
-                    new Move { Action = "GOTO", Module = "LABORATORY" }
+                    new Move { Action = "GOTO", Module = Module.Samples },
+                    new Move { Action = "GOTO", Module = Module.Diagnosis },
+                    new Move { Action = "GOTO", Module = Module.Laboratory }
                 }
                 .Concat(pickupMoleculeMoves)
                 .ToArray();
-            case "LABORATORY":
+            case Module.Laboratory:
                 var playerSampleDropoffMoves = _playerSamples
                     .Where(s =>
                         s.IsDiagnosed() &&
@@ -369,15 +403,24 @@ class Simulation
                     .Select(s => new Move { Action = "CONNECT", SampleId = $"{s.Id}" });
                 return new Move[]
                 {
-                    new Move { Action = "GOTO", Module = "SAMPLES" },
-                    new Move { Action = "GOTO", Module = "DIAGNOSIS" },
-                    new Move { Action = "GOTO", Module = "MOLECULES" }
+                    new Move { Action = "GOTO", Module = Module.Samples },
+                    new Move { Action = "GOTO", Module = Module.Diagnosis },
+                    new Move { Action = "GOTO", Module = Module.Molecules }
                 }
                 .Concat(playerSampleDropoffMoves)
                 .ToArray();
             default:
                 return noMoves;
         }
+    }
+
+    public Simulation Copy()
+    {
+        return new Simulation(
+            _player.Copy(),
+            _opponent.Copy(),
+            _availableMolecules.Copy(),
+            _samples.Select(s => s.Copy()).ToArray());
     }
 }
 
@@ -392,12 +435,33 @@ class SimulationOrchestrator
 
     public string CalculateBestMove()
     {
+        var startPossibleMovesTime = DateTime.Now;
         var possibleMoves = CurrentSimulationSnapshot.GetPossibleMoves();
+        Console.Error.WriteLine($"Calculated possible moves in {(DateTime.Now - startPossibleMovesTime).Milliseconds} milliseconds.");
 
         if (!possibleMoves.Any())
             return "TRAVELLING";
 
-        return possibleMoves[new Random().Next(possibleMoves.Count() - 1)].ToString();
+        Move bestMove = null;
+        var maxScoreIncrease = -1;
+        foreach (var possibleMove in possibleMoves)
+        {
+            var startScoreIncreaseCalculation = DateTime.Now;
+            var scoreIncrease = MakeMove(CurrentSimulationSnapshot.Copy(), possibleMove).PlayerScore - CurrentSimulationSnapshot.PlayerScore;
+            Console.Error.WriteLine($"Calculated score increase in {(DateTime.Now - startScoreIncreaseCalculation).Milliseconds} milliseconds.");
+            if (scoreIncrease > maxScoreIncrease)
+            {
+                maxScoreIncrease = scoreIncrease;
+                bestMove = possibleMove;
+            }
+        }
+
+        return bestMove.ToString();
+    }
+
+    private Simulation MakeMove(Simulation simulation, Move playerMove)
+    {
+        return simulation.Move(playerMove);
     }
 }
 
@@ -412,7 +476,6 @@ class Player
         for (int i = 0; i < sampleCount; i++)
         {
             inputs = Console.ReadLine().Split(' ');
-            Console.Error.WriteLine($"Sample {i}: {String.Join(" ", inputs)}");
 
             samples[i] = new Sample
             {
@@ -470,8 +533,13 @@ class Player
         // game loop
         while (true)
         {
+            var startParsingInput = DateTime.Now;
             var simulationOrchestrator = new SimulationOrchestrator(new Simulation(new Robot(), new Robot(), GetAvailableMolecules(), GetSamples()));
+            Console.Error.WriteLine($"Parsed input in {(DateTime.Now - startParsingInput).Milliseconds} milliseconds.");
+
+            var startCalculatingBestMove = DateTime.Now;
             Console.WriteLine(simulationOrchestrator.CalculateBestMove());
+            Console.Error.WriteLine($"Calculated best move in {(DateTime.Now - startCalculatingBestMove).Milliseconds} milliseconds.");
         }
     }
 }
