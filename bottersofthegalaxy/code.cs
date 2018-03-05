@@ -54,6 +54,8 @@ class Location
 
 class Entity
 {
+    public bool Deniable => ((double)Health / (double)MaxHealth) <= 0.4;
+
     public int Id { get; set; }
     public int Team { get; set; }
     public EntityType Type { get; set; }
@@ -61,13 +63,19 @@ class Entity
     public int AttackRange { get; set; }
     public int Health { get; set; }
     public int MaxHealth { get; set; }
+    public int AttackDamage { get; set; }
     public int ItemsOwned { get; set; }
+
+    public bool CanLastHit(int attackDamage)
+    {
+        return Health <= attackDamage;
+    }
 }
 
 class Hero : Entity
 {
     public bool HasItemSpace => ItemsOwned < 3;
-    public bool HasLowHealth => ((double)Health / (double)MaxHealth) < 0.5;
+    public bool HasLowHealth => Deniable;
     
     public void MoveToSafePosition(IEnumerable<Entity> playerUnits)
     {
@@ -92,6 +100,22 @@ class Hero : Entity
     public void MoveTo(Location location)
     {
         Console.WriteLine($"MOVE {location.X} {location.Y}");
+    }
+
+    public void AttemptToLastHit(IEnumerable<Entity> playerUnits, IEnumerable<Entity> opponentUnits)
+    {
+        var deniableUnits = playerUnits
+            .Where(u => u.Deniable && u.CanLastHit(AttackDamage))
+            .OrderBy(u => u.Health);
+        var lastHittableUnits = opponentUnits
+            .Where( u => u.CanLastHit(AttackDamage))
+            .OrderByDescending(u => u.Health);
+        if (deniableUnits.Any())
+            Console.WriteLine($"ATTACK {deniableUnits.First().Id}");
+        else if (lastHittableUnits.Any())
+            Console.WriteLine($"ATTACK {lastHittableUnits.First().Id}");
+        else
+            AttackNearest(EntityType.Unit);
     }
     
     public void AttackNearest(EntityType entityType)
@@ -182,8 +206,8 @@ class Player
                     AttackRange = int.Parse(inputs[5]),
                     Health = int.Parse(inputs[6]),
                     MaxHealth = int.Parse(inputs[7]),
+                    AttackDamage = int.Parse(inputs[9]),
                     ItemsOwned = int.Parse(inputs[21])
-                    // AttackDamage = int.Parse(inputs[9])
                 };
             else
                 entities[i] = new Entity
@@ -195,22 +219,22 @@ class Player
                     AttackRange = int.Parse(inputs[5]),
                     Health = int.Parse(inputs[6]),
                     MaxHealth = int.Parse(inputs[7]),
+                    AttackDamage = int.Parse(inputs[9]),
                     ItemsOwned = int.Parse(inputs[21])
-                    // AttackDamage = int.Parse(inputs[9])
                 };
                 // int shield = int.Parse(inputs[8]); // useful in bronze
-            // int movementSpeed = int.Parse(inputs[10]);
-            // int stunDuration = int.Parse(inputs[11]); // useful in bronze
-            // int goldValue = int.Parse(inputs[12]);
-            // int countDown1 = int.Parse(inputs[13]); // all countDown and mana variables are useful starting in bronze
-            // int countDown2 = int.Parse(inputs[14]);
-            // int countDown3 = int.Parse(inputs[15]);
-            // int mana = int.Parse(inputs[16]);
-            // int maxMana = int.Parse(inputs[17]);
-            // int manaRegeneration = int.Parse(inputs[18]);
-            // string heroType = inputs[19]; // DEADPOOL, VALKYRIE, DOCTOR_STRANGE, HULK, IRONMAN
-            // int isVisible = int.Parse(inputs[20]); // 0 if it isn't
-            // int itemsOwned = int.Parse(inputs[21]); // useful from wood1
+                // int movementSpeed = int.Parse(inputs[10]);
+                // int stunDuration = int.Parse(inputs[11]); // useful in bronze
+                // int goldValue = int.Parse(inputs[12]);
+                // int countDown1 = int.Parse(inputs[13]); // all countDown and mana variables are useful starting in bronze
+                // int countDown2 = int.Parse(inputs[14]);
+                // int countDown3 = int.Parse(inputs[15]);
+                // int mana = int.Parse(inputs[16]);
+                // int maxMana = int.Parse(inputs[17]);
+                // int manaRegeneration = int.Parse(inputs[18]);
+                // string heroType = inputs[19]; // DEADPOOL, VALKYRIE, DOCTOR_STRANGE, HULK, IRONMAN
+                // int isVisible = int.Parse(inputs[20]); // 0 if it isn't
+                // int itemsOwned = int.Parse(inputs[21]); // useful from wood1
         }
         return entities;
     }
@@ -272,7 +296,7 @@ class Player
                                 playerHero.BuyItem(bestHealthPotionCanAfford.Name);
                                 gold -= bestHealthPotionCanAfford.Cost;
                             }
-                            else if (playerHero.HasLowHealth && !otherPlayerHero.HasLowHealth)
+                            else if (playerHero.HasLowHealth && otherPlayerHero != null && !otherPlayerHero.HasLowHealth)
                                 playerHero.MoveTo(playerTowerLocation);
                             // TODO: Sell item if both heroes have low health
                             else
@@ -299,11 +323,11 @@ class Player
                                     var opponentTowerLocation = opponentEntities
                                         .Single(e => e.Type == EntityType.Tower).Location;
                                     if (opponentUnits.Any() && opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)))
+                                        // TODO: Add some logic here to decide which hero to attack (closest / lowest health / etc)
                                         playerHero.AttackNearest(EntityType.Hero);
                                     else if (opponentUnits.Any() && opponentUnits.Any(u => Math.Abs(u.Location.X - opponentTowerLocation.X) > 150))
                                     {
-                                        // TODO: Attack a specific unit (deny / creep kill)
-                                        playerHero.AttackNearest(EntityType.Unit);
+                                        playerHero.AttemptToLastHit(playerUnits, opponentUnits);
                                     }
                                     else
                                         playerHero.Wait();
