@@ -19,6 +19,8 @@ class Molecules
     public int C { get; set; }
     public int D { get; set; }
     public int E { get; set; }
+
+    public int TotalMolecules => A + B + C + D + E;
     
     public void AddMoleculeType(string moleculeType)
     {
@@ -29,6 +31,19 @@ class Molecules
             case "C": C++; break;
             case "D": D++; break;
             case "E": E++; break;
+            default: break;
+        }
+    }
+
+    public void RemoveMoleculeType(string moleculeType)
+    {
+        switch (moleculeType)
+        {
+            case "A": A--; break;
+            case "B": B--; break;
+            case "C": C--; break;
+            case "D": D--; break;
+            case "E": E--; break;
             default: break;
         }
     }
@@ -91,10 +106,10 @@ class Molecules
     public static bool operator >=(Molecules m1, Molecules m2)
     {
         return m1.A >= m2.A
-            || m1.B >= m2.B
-            || m1.C >= m2.C
-            || m1.D >= m2.D
-            || m1.E >= m2.E;
+            && m1.B >= m2.B
+            && m1.C >= m2.C
+            && m1.D >= m2.D
+            && m1.E >= m2.E;
     }
 
     public static bool operator >(Molecules m1, Molecules m2)
@@ -127,11 +142,6 @@ class Molecules
         };
     }
     
-    public int TotalMolecules()
-    {
-        return A + B + C + D + E;
-    }
-    
     public override string ToString()
     {
         return "\n" +
@@ -143,211 +153,72 @@ class Molecules
     }
 }
 
+enum Module
+{
+    Startpos,
+    Samples,
+    Diagnosis,
+    Molecules,
+    Laboratory
+}
+
 class Robot
 {
-    public string Module { get; set; }
+    public Module Module { get; set; }
     public int Eta { get; set; }
     public int Score { get; set; }
     public Molecules CarriedMolecules { get; set; }
     public Molecules MolecularExpertise { get; set; }
 
-    public void Move(Molecules availableMolecules, Sample[] samples)
+    public bool Travelling => Eta > 0;
+
+    public Robot()
     {
-        var playerSamples = samples.Where(s => s.SampleLocation == SampleLocation.Player);
-        if (Eta != 0)
+        string[] inputs = Console.ReadLine().Split(' ');
+
+        var module = inputs[0];
+        if (module == "STARTPOS")
+            Module = Module.Startpos;
+        if (module == "SAMPLES")
+            Module = Module.Samples;
+        if (module == "DIAGNOSIS")
+            Module = Module.Diagnosis;
+        if (module == "MOLECULES")
+            Module = Module.Molecules;
+        if (module == "LABORATORY")
+            Module = Module.Laboratory;
+        Eta = int.Parse(inputs[1]);
+        Score = int.Parse(inputs[2]);
+        CarriedMolecules = new Molecules
         {
-            Console.WriteLine();
-        }
-        else if (Module == "START_POS")
+            A = int.Parse(inputs[3]),
+            B = int.Parse(inputs[4]),
+            C = int.Parse(inputs[5]),
+            D = int.Parse(inputs[6]),
+            E = int.Parse(inputs[7])
+        };
+        MolecularExpertise = new Molecules
         {
-            Console.WriteLine("GOTO SAMPLES");
-        }
-        else if (Module == "SAMPLES")
-        {
-            var playerSamplesCount = playerSamples.Count();
-            if (playerSamplesCount < 1)
-            {
-                var sampleRank = 1;
-                if (MolecularExpertise.TotalMolecules() >= 12)
-                    sampleRank = 2;
-                Console.WriteLine($"CONNECT {sampleRank}");
-            }
-            else if (playerSamplesCount < 2)
-            {
-                var sampleRank = 1;
-                if (MolecularExpertise.TotalMolecules() >= 6)
-                    sampleRank = 2;
-                if (MolecularExpertise.TotalMolecules() >= 12)
-                    sampleRank = 3;
-                Console.WriteLine($"CONNECT {sampleRank}");
-            }
-            else if (playerSamplesCount < 3)
-            {
-                var sampleRank = 1;
-                if (MolecularExpertise.TotalMolecules() >= 3)
-                    sampleRank = 2;
-                if (MolecularExpertise.TotalMolecules() >= 9)
-                    sampleRank = 3;
-                Console.WriteLine($"CONNECT {sampleRank}");
-            }
-            else
-            {
-                Console.WriteLine("GOTO DIAGNOSIS");
-            }
-        }
-        else if (Module == "DIAGNOSIS")
-        {
-            var undiagnosedSample = playerSamples
-                .FirstOrDefault(s => !s.IsDiagnosed());
-            if (undiagnosedSample != null)
-            {
-                Console.WriteLine($"CONNECT {undiagnosedSample.Id}");
-            }
-            else
-            {
-                var impossibleSample = playerSamples
-                    .FirstOrDefault(s => (s.RequiredMolecules - MolecularExpertise) > (availableMolecules + CarriedMolecules));
-                if (impossibleSample != null)
-                {
-                    Console.WriteLine($"CONNECT {impossibleSample.Id}");
-                }
-                else
-                {
-                    if (playerSamples.Count() == 0)
-                    {
-                        var possibleCloudSample = samples
-                            .Where(s => s.SampleLocation == SampleLocation.Cloud)
-                            .FirstOrDefault(s => (s.RequiredMolecules - MolecularExpertise) <= (availableMolecules + CarriedMolecules));
-                        if (possibleCloudSample != null)
-                        {
-                            Console.WriteLine($"CONNECT {possibleCloudSample.Id}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("GOTO SAMPLES");
-                        }
-                    }
-                    else
-                    {
-                        var totalMoleculesRequired = playerSamples
-                            .Select(s => s.RequiredMolecules - MolecularExpertise)
-                            .Aggregate((x,y) => x + y);
-                        Console.Error.WriteLine($"Total molecules required: {totalMoleculesRequired}");
-                        Console.Error.WriteLine($"Total molecules carried: {CarriedMolecules}");
-                        if (totalMoleculesRequired <= CarriedMolecules)
-                        {
-                            Console.WriteLine("GOTO LABORATORY");
-                        }
-                        else
-                        {
-                            Console.WriteLine("GOTO MOLECULES");
-                        }
-                    }
-                }
-            } 
-        }
-        else if (Module == "MOLECULES")
-        {
-            var totalMoleculesRequired = playerSamples
-                .Select(s => s.RequiredMolecules - MolecularExpertise)
-                .Aggregate((x,y) => x + y);
-            Console.Error.WriteLine($"Total molecules required: {totalMoleculesRequired}");
-            Console.Error.WriteLine($"Total molecules carried: {CarriedMolecules}");
-            Console.Error.WriteLine($"Total molecules available: {availableMolecules}");
-            if (CarriedMolecules.TotalMolecules() < 10 && totalMoleculesRequired > CarriedMolecules)
-            {
-                var moleculeType = "";
-                var unreservedCarriedMolecules = CarriedMolecules.Copy();
-                
-                foreach(var sample in playerSamples
-                    .OrderBy(s => (s.RequiredMolecules - MolecularExpertise).TotalMolecules()))
-                {
-                    var requiredMoleculesForSample = sample.RequiredMolecules - MolecularExpertise;
-                    
-                    if (requiredMoleculesForSample <= unreservedCarriedMolecules)
-                    {
-                        unreservedCarriedMolecules -= requiredMoleculesForSample;
-                        unreservedCarriedMolecules.AddMoleculeType(sample.ExpertiseGain);
-                        continue;
-                    }
-                    
-                    if (unreservedCarriedMolecules.A < requiredMoleculesForSample.A && availableMolecules.A > 0)
-                        moleculeType = "A";
-                    else if (unreservedCarriedMolecules.B < requiredMoleculesForSample.B && availableMolecules.B > 0)
-                        moleculeType = "B";
-                    else if (unreservedCarriedMolecules.C < requiredMoleculesForSample.C && availableMolecules.C > 0)
-                        moleculeType = "C";
-                    else if (unreservedCarriedMolecules.D < requiredMoleculesForSample.D && availableMolecules.D > 0)
-                        moleculeType = "D";
-                    else if (unreservedCarriedMolecules.E < requiredMoleculesForSample.E && availableMolecules.E > 0)
-                        moleculeType = "E";
-                    else
-                        continue;
-                    break;
-                }
-                
-                if (String.IsNullOrWhiteSpace(moleculeType))
-                {
-                    if (playerSamples.Any(s => (s.RequiredMolecules - MolecularExpertise) <= CarriedMolecules))
-                    {
-                        Console.WriteLine("GOTO LABORATORY");
-                    }
-                    else
-                    {
-                        Console.WriteLine("GOTO DIAGNOSIS");
-                    }
-                }
-                else
-                {
-                    Console.WriteLine($"CONNECT {moleculeType}");
-                }
-            }
-            else
-            {
-                var numberOfPossibleHeldSamples = playerSamples
-                    .Count(s => (s.RequiredMolecules - MolecularExpertise) <= (availableMolecules + CarriedMolecules));
-                var numberOfPossibleCloudSamples = samples
-                    .Where(s => s.SampleLocation == SampleLocation.Cloud)
-                    .Count(s => (s.RequiredMolecules - MolecularExpertise) <= (availableMolecules + CarriedMolecules));
-                if (numberOfPossibleHeldSamples >= 1)
-                    Console.WriteLine("GOTO LABORATORY");
-                else if (playerSamples.Count() >= 2 || numberOfPossibleCloudSamples >= 1)
-                    Console.WriteLine("GOTO DIAGNOSIS");
-                else
-                    Console.WriteLine("GOTO SAMPLES");
-            }
-        }
-        else if (Module == "LABORATORY")
-        {
-            if (playerSamples.Any())
-            {
-                var simplestSample = playerSamples
-                    .OrderBy(s => (s.RequiredMolecules - MolecularExpertise).TotalMolecules())
-                    .First();
-                if ((simplestSample.RequiredMolecules - MolecularExpertise) <= CarriedMolecules)
-                {
-                    Console.WriteLine($"CONNECT {simplestSample.Id}");
-                }
-                else
-                {
-                    Console.WriteLine("GOTO MOLECULES");
-                }
-            }
-            else
-            {
-                var numberOfPossibleCloudSamples = samples
-                    .Where(s => s.SampleLocation == SampleLocation.Cloud)
-                    .Count(s => (s.RequiredMolecules - MolecularExpertise) <= (availableMolecules + CarriedMolecules));
-                if (numberOfPossibleCloudSamples >= 2)
-                {
-                    Console.WriteLine("GOTO DIAGNOSIS");
-                }
-                else
-                {
-                    Console.WriteLine("GOTO SAMPLES");
-                }
-            }
-        }
+            A = int.Parse(inputs[8]),
+            B = int.Parse(inputs[9]),
+            C = int.Parse(inputs[10]),
+            D = int.Parse(inputs[11]),
+            E = int.Parse(inputs[12]),
+        };
+    }
+
+    public Robot(Module module, int eta, int score, Molecules carriedMolecules, Molecules molecularExpertise)
+    {
+        Module = module;
+        Eta = eta;
+        Score = score;
+        CarriedMolecules = carriedMolecules;
+        MolecularExpertise = molecularExpertise;
+    }
+
+    public Robot Copy()
+    {
+        return new Robot(Module, Eta, Score, CarriedMolecules.Copy(), MolecularExpertise.Copy());
     }
 }
 
@@ -360,6 +231,18 @@ class Sample
     public int Rank { get; set; }
     public string ExpertiseGain { get; set; }
     
+    public Sample() {}
+
+    public Sample(int id, int rank)
+    {
+        Id = id;
+        SampleLocation = SampleLocation.Player;
+        Health = -1;
+        RequiredMolecules = new Molecules();
+        Rank = rank;
+        ExpertiseGain = "";
+    }
+
     public bool IsDiagnosed()
     {
         return Health != -1
@@ -369,22 +252,329 @@ class Sample
             && RequiredMolecules.D != -1
             && RequiredMolecules.E != -1;
     }
+
+    public bool HasMoleculesRequired(Molecules playerMolecules)
+    {
+        return playerMolecules >= RequiredMolecules;
+    }
+
+    public Sample Copy()
+    {
+        return new Sample
+        {
+            Id = Id,
+            SampleLocation = SampleLocation,
+            Health = Health,
+            RequiredMolecules = RequiredMolecules.Copy(),
+            Rank = Rank,
+            ExpertiseGain = ExpertiseGain
+        };
+    }
+}
+
+class Move
+{
+    public string Action { get; set; }
+    public Module Module { get; set; }
+    public int SampleRank { get; set; } = -1;
+    public int SampleId { get; set; } = -1;
+    public string MoleculeType { get; set; }
+
+    private string _actionParameter =>
+        MoleculeType != null
+            ? MoleculeType
+            : SampleId != -1
+                ? $"{SampleId}"
+                : $"{SampleRank}";
+
+    public override string ToString()
+    {
+        switch (Action)
+        {
+            case "GOTO":
+                return $"{Action} {Module}";
+            case "CONNECT":
+                return $"{Action} {_actionParameter}";
+            default:
+                return "Invalid move object.";
+        }
+    }
+}
+
+class Simulation
+{
+    public Robot Player;
+    private Robot _opponent;
+    public Molecules AvailableMolecules;
+    public List<Sample> Samples;
+
+    private IEnumerable<Sample> _playerSamples => Samples.Where(s => s.SampleLocation == SampleLocation.Player);
+    private IEnumerable<Sample> _cloudSamples => Samples.Where(s => s.SampleLocation == SampleLocation.Cloud);
+
+    private int[,] _moveEtas = new int[5,5]
+    {
+        {0, 2, 2, 2, 2},
+        {0, 0, 3, 3, 3},
+        {0, 3, 0, 3, 4},
+        {0, 3, 3, 0, 3},
+        {0, 3, 4, 3, 0}
+    };
+
+    public int PlayerScore => Player.Score;
+
+    public Simulation(Robot player, Robot opponent, Molecules availableMolecules, List<Sample> samples)
+    {
+        Player = player;
+        _opponent = opponent;
+        AvailableMolecules = availableMolecules;
+        Samples = samples;
+    }
+
+    public Simulation Move(Move move)
+    {
+        var simulation = Copy();
+        switch (move.Action)
+        {
+            case "WAIT":
+                simulation.Player.Eta--;
+                break;
+            case "GOTO":
+                simulation.Player.Eta = _moveEtas[(int)simulation.Player.Module, (int)move.Module];
+                simulation.Player.Module = move.Module;
+                break;
+            case "CONNECT":
+                switch (simulation.Player.Module)
+                {
+                    case Module.Samples:
+                        var sampleId = Samples.Any()
+                            ? Samples.Select(s => s.Id).Max() + 1
+                            : 0;
+                        simulation.Samples.Add(new Sample(sampleId, move.SampleRank));
+                        break;
+                    case Module.Diagnosis:
+
+                        break;
+                    case Module.Molecules:
+                        simulation.AvailableMolecules.RemoveMoleculeType(move.MoleculeType);
+                        simulation.Player.CarriedMolecules.AddMoleculeType(move.MoleculeType);
+                        break;
+                    case Module.Laboratory:
+                        var sample = simulation.Samples.Single(s => s.Id == move.SampleId);
+                        simulation.Player.CarriedMolecules = simulation.Player.CarriedMolecules - sample.RequiredMolecules;
+                        simulation.Player.Score += sample.Health;
+                        simulation.Player.MolecularExpertise.AddMoleculeType(sample.ExpertiseGain);
+                        break;
+                }
+                break;
+        }
+
+        return simulation;
+    }
+
+    public Move[] GetPossibleMoves()
+    {
+        if (Player.Travelling)
+            return new Move[] {};
+
+        return GetMovesFromModule(Player.Module);
+    }
+
+    private Move[] GetMovesFromModule(Module module)
+    {
+        var noMoves = new Move[] {};
+
+        switch (module)
+        {
+            case Module.Startpos:
+                return new Move[]
+                {
+                    new Move { Action = "GOTO", Module = Module.Samples },
+                    new Move { Action = "GOTO", Module = Module.Diagnosis },
+                    new Move { Action = "GOTO", Module = Module.Molecules },
+                    new Move { Action = "GOTO", Module = Module.Laboratory }
+                };
+            case Module.Samples:
+                var samplePickupMoves = _playerSamples.Count() < 3
+                    ? new Move[]
+                    {
+                        new Move { Action = "CONNECT", SampleRank = 1 },
+                        new Move { Action = "CONNECT", SampleRank = 2 },
+                        new Move { Action = "CONNECT", SampleRank = 3 }
+                    }
+                    : noMoves;
+                return new Move[]
+                {
+                    new Move { Action = "GOTO", Module = Module.Diagnosis },
+                    new Move { Action = "GOTO", Module = Module.Molecules },
+                    new Move { Action = "GOTO", Module = Module.Laboratory }
+                }
+                .Concat(samplePickupMoves)
+                .ToArray();
+            case Module.Diagnosis:
+                var playerSampleMoves = _playerSamples.Select(s => new Move { Action = "CONNECT", SampleId = s.Id });
+                var cloudSampleMoves = _playerSamples.Count() < 3
+                    ? _cloudSamples.Select(s => new Move { Action = "CONNECT", SampleId = s.Id })
+                    : noMoves;
+                return new Move[]
+                {
+                    new Move { Action = "GOTO", Module = Module.Samples },
+                    new Move { Action = "GOTO", Module = Module.Molecules },
+                    new Move { Action = "GOTO", Module = Module.Laboratory }
+                }
+                .Concat(playerSampleMoves)
+                .Concat(cloudSampleMoves)
+                .ToArray();
+            case Module.Molecules:
+                var pickupMoleculeMoves = new List<Move>();
+                if (Player.CarriedMolecules.TotalMolecules < 10)
+                {
+                    if (AvailableMolecules.A > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "A" });
+                    if (AvailableMolecules.B > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "B" });
+                    if (AvailableMolecules.C > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "C" });
+                    if (AvailableMolecules.D > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "D" });
+                    if (AvailableMolecules.E > 0)
+                        pickupMoleculeMoves.Add(new Move { Action = "CONNECT", MoleculeType = "E" });
+                }
+                
+                return new Move[]
+                {
+                    new Move { Action = "GOTO", Module = Module.Samples },
+                    new Move { Action = "GOTO", Module = Module.Diagnosis },
+                    new Move { Action = "GOTO", Module = Module.Laboratory }
+                }
+                .Concat(pickupMoleculeMoves)
+                .ToArray();
+            case Module.Laboratory:
+                var playerSampleDropoffMoves = _playerSamples
+                    .Where(s =>
+                        s.IsDiagnosed() &&
+                        s.HasMoleculesRequired(Player.CarriedMolecules + Player.MolecularExpertise))
+                    .Select(s => new Move { Action = "CONNECT", SampleId = s.Id });
+                return new Move[]
+                {
+                    new Move { Action = "GOTO", Module = Module.Samples },
+                    new Move { Action = "GOTO", Module = Module.Diagnosis },
+                    new Move { Action = "GOTO", Module = Module.Molecules }
+                }
+                .Concat(playerSampleDropoffMoves)
+                .ToArray();
+            default:
+                return noMoves;
+        }
+    }
+
+    public Simulation Copy()
+    {
+        return new Simulation(
+            Player.Copy(),
+            _opponent.Copy(),
+            AvailableMolecules.Copy(),
+            Samples.Select(s => s.Copy()).ToList());
+    }
+}
+
+class SimulationMove
+{
+    public Simulation CurrentSimulation { get; set; }
+    public Move Move { get; set; }
+    public List<SimulationMove> NextSimulations { get; set; }
+}
+
+class SimulationOrchestrator
+{
+    private SimulationMove CurrentSimulationMove;
+
+    public SimulationOrchestrator(Simulation originSimulation)
+    {
+        CurrentSimulationMove = new SimulationMove { CurrentSimulation = originSimulation };
+    }
+
+    public void InitialSimulation(int lookAhead)
+    {
+        CurrentSimulationMove.NextSimulations = GetNextPossibleSimulations(CurrentSimulationMove, lookAhead);
+    }
+
+    public void Update()
+    {
+        CurrentSimulation = NextSimulations.Where(s => s.)
+    }
+
+    public string CalculateBestMove()
+    {
+        var possibleMoves = CurrentSimulationSnapshot.GetPossibleMoves();
+
+        if (!possibleMoves.Any())
+            return "TRAVELLING";
+
+        var possibleSimulations = GetNextPossibleSimulations(new SimulationMove { Simulation = CurrentSimulationSnapshot, Move = null }, 8);
+        Console.Error.WriteLine($"{possibleSimulations.Count()} simulations discovered.");
+        var bestMove = possibleSimulations
+            .OrderByDescending(s => s.Simulation.PlayerScore)
+            .First()
+            .Move;
+
+        return bestMove.ToString();
+    }
+
+    private List<SimulationMove> GetNextPossibleSimulations(SimulationMove simulationMove, int lookAhead)
+    {
+        var possibleMoves = simulationMove.Simulation.GetPossibleMoves();
+
+        if (!possibleMoves.Any())
+        {
+            var waitMove = new Move { Action = "WAIT" };
+            var nextSimulationMove = new SimulationMove
+            {
+                CurrentSimulation = simulationMove.Simulation.Move(waitMove),
+                Move = waitMove
+            };
+
+            if (lookAhead > 0)
+                nextSimulationMove.NextSimulations = GetNextPossibleSimulations(nextSimulationMove, lookAhead - 1);
+            return new List<SimulationMove> { nextSimulationMove };
+        }
+
+        var nextPossibleSimulationMoves = new List<SimulationMove>();
+        foreach (var possibleMove in possibleMoves)
+        {
+            var nextSimulationMove = new SimulationMove
+            {
+                Simulation = simulationMove.Simulation.Move(possibleMove),
+                Move = possibleMove
+            };
+
+            if (lookAhead > 0)
+                nextSimulationMove.NextSimulations = GetNextPossibleSimulations(nextSimulationMove, lookAhead - 1);
+            
+            nextPossibleSimulationMoves.Add(nextSimulationMove});
+        }
+
+        return nextPossibleSimulationMoves;
+    }
+
+    private Simulation MakeMove(Simulation simulation, Move playerMove)
+    {
+        return simulation.Move(playerMove);
+    }
 }
 
 class Player
 {
-    static Sample[] GetSamples()
+    static List<Sample> GetSamples()
     {
         var sampleCount = int.Parse(Console.ReadLine());
-        Sample[] samples = new Sample[sampleCount];
+        var samples = new List<Sample>();
 
         string[] inputs;
         for (int i = 0; i < sampleCount; i++)
         {
             inputs = Console.ReadLine().Split(' ');
-            Console.Error.WriteLine($"Sample {i}: {String.Join(" ", inputs)}");
 
-            samples[i] = new Sample
+            samples.Add(new Sample
             {
                 Id = int.Parse(inputs[0]),
                 SampleLocation = (SampleLocation)int.Parse(inputs[1]),
@@ -399,7 +589,7 @@ class Player
                     D = int.Parse(inputs[8]),
                     E = int.Parse(inputs[9])
                 }
-            };
+            });
         }
         return samples;
     }
@@ -417,7 +607,7 @@ class Player
         };
     }
 
-    // Not needed for current league.
+    // Not yet weighted
     static void GetProjectStuff()
     {
         int projectCount = int.Parse(Console.ReadLine());
@@ -432,53 +622,33 @@ class Player
         }
     }
 
-    static Robot GetRobotInfo()
-    {
-        string[] inputs = Console.ReadLine().Split(' ');
-        Console.Error.WriteLine($"Robot: {String.Join(" ", inputs)}");
-        return new Robot
-        {
-            Module = inputs[0],
-            Eta = int.Parse(inputs[1]),
-            Score = int.Parse(inputs[2]),
-            CarriedMolecules = new Molecules
-            {
-                A = int.Parse(inputs[3]),
-                B = int.Parse(inputs[4]),
-                C = int.Parse(inputs[5]),
-                D = int.Parse(inputs[6]),
-                E = int.Parse(inputs[7])
-            },
-            MolecularExpertise = new Molecules
-            {
-                A = int.Parse(inputs[8]),
-                B = int.Parse(inputs[9]),
-                C = int.Parse(inputs[10]),
-                D = int.Parse(inputs[11]),
-                E = int.Parse(inputs[12]),
-            }
-        };
-    }
-
     static void Main(string[] args)
     {
         string[] inputs;
         GetProjectStuff();
 
+        var startParsingInput = DateTime.Now;
+        var simulationOrchestrator = new SimulationOrchestrator(new Simulation(new Robot(), new Robot(), GetAvailableMolecules(), GetSamples()));
+        Console.Error.WriteLine($"Parsed input in {(DateTime.Now - startParsingInput).Milliseconds} milliseconds.");
+
+        var startInitialSimulation = DateTime.Now;
+        simulationOrchestrator.InitialSimulation(4);
+        Console.Error.WriteLine($"Initial simulation completed in {(DateTime.Now - startInitialSimulation).Milliseconds} milliseconds.");
+
+        var startCalculatingBestMove = DateTime.Now;
+        Console.WriteLine(simulationOrchestrator.CalculateBestMove());
+        Console.Error.WriteLine($"Calculated best move in {(DateTime.Now - startCalculatingBestMove).Milliseconds} milliseconds.");
+
         // game loop
         while (true)
         {
-            var player = GetRobotInfo();
-            var oppononent = GetRobotInfo();
+            startParsingInput = DateTime.Now;
+            simulationOrchestrator.Update(new Robot(), new Robot(), GetAvailableMolecules(), GetSamples());
+            Console.Error.WriteLine($"Parsed input and updated simulation orchestrator in {(DateTime.Now - startParsingInput).Milliseconds} milliseconds.");
 
-            var availableMolecules = GetAvailableMolecules();
-
-            var samples = GetSamples();
-            
-            player.Move(availableMolecules, samples);
-
-            // Write an action using Console.WriteLine()
-            // To debug: Console.Error.WriteLine("Debug messages...");
+            startCalculatingBestMove = DateTime.Now;
+            Console.WriteLine(simulationOrchestrator.CalculateBestMove());
+            Console.Error.WriteLine($"Calculated best move in {(DateTime.Now - startCalculatingBestMove).Milliseconds} milliseconds.");
         }
     }
 }
