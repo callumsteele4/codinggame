@@ -84,6 +84,9 @@ class Entity
 class Hero : Entity
 {
     public HeroType HeroType { get; set; }
+    public int Skill1Cooldown { get; set; }
+    public int Skill2Cooldown { get; set; }
+    public int Skill3Cooldown { get; set; }
 
     public bool HasItemSpace => ItemsOwned < 3;
     public bool HasLowHealth => Deniable;
@@ -133,6 +136,16 @@ class Hero : Entity
     public void AttackNearest(EntityType entityType)
     {
         Console.WriteLine($"ATTACK_NEAREST {entityType.ToString().ToUpper()}");
+    }
+
+    public void Cast(string skill, Location location)
+    {
+        Console.WriteLine($"{skill} {location.X} {location.Y}");
+    }
+
+    public void Cast(string skill, int unitId)
+    {
+        Console.WriteLine($"{skill} {unitId}");
     }
 
     public void BuyItem(string itemName)
@@ -219,6 +232,9 @@ class Player
                     Health = int.Parse(inputs[6]),
                     MaxHealth = int.Parse(inputs[7]),
                     AttackDamage = int.Parse(inputs[9]),
+                    Skill1Cooldown = int.Parse(inputs[13]),
+                    Skill2Cooldown = int.Parse(inputs[14]),
+                    Skill3Cooldown = int.Parse(inputs[15]),
                     HeroType = (HeroType) Enum.Parse(typeof(HeroType), inputs[19], true),
                     ItemsOwned = int.Parse(inputs[21])
                 };
@@ -239,9 +255,6 @@ class Player
                 // int movementSpeed = int.Parse(inputs[10]);
                 // int stunDuration = int.Parse(inputs[11]); // useful in bronze
                 // int goldValue = int.Parse(inputs[12]);
-                // int countDown1 = int.Parse(inputs[13]); // all countDown and mana variables are useful starting in bronze
-                // int countDown2 = int.Parse(inputs[14]);
-                // int countDown3 = int.Parse(inputs[15]);
                 // int mana = int.Parse(inputs[16]);
                 // int maxMana = int.Parse(inputs[17]);
                 // int manaRegeneration = int.Parse(inputs[18]);
@@ -308,6 +321,17 @@ class Player
                                     .First();
                                 playerHero.BuyItem(bestHealthPotionCanAfford.Name);
                                 gold -= bestHealthPotionCanAfford.Cost;
+                            }
+                            else if (
+                                playerHero.HeroType == HeroType.Doctor_Strange &&
+                                (playerHero.Skill1Cooldown == 0 || playerHero.Skill2Cooldown == 0) &&
+                                (playerHero.HasLowHealth || (otherPlayerHero != null && otherPlayerHero.HasLowHealth)))
+                            {
+                                var lowestHealthHero = playerHero.Health < otherPlayerHero.Health ? playerHero : otherPlayerHero;
+                                if (playerHero.Skill1Cooldown == 0)
+                                    playerHero.Cast("AOEHEAL", lowestHealthHero.Location);
+                                else
+                                    playerHero.Cast("SHIELD", lowestHealthHero.Id);
                             }
                             else if (playerHero.HasLowHealth && otherPlayerHero != null && !otherPlayerHero.HasLowHealth)
                                 playerHero.MoveTo(playerTowerLocation);
