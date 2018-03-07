@@ -10,6 +10,15 @@ enum EntityType
     Groot
 }
 
+enum HeroType
+{
+    Deadpool,
+    Valkyrie,
+    Doctor_Strange,
+    Hulk,
+    Ironman
+}
+
 class Location
 {
     public int X { get; set; }
@@ -74,6 +83,8 @@ class Entity
 
 class Hero : Entity
 {
+    public HeroType HeroType { get; set; }
+
     public bool HasItemSpace => ItemsOwned < 3;
     public bool HasLowHealth => Deniable;
     
@@ -208,6 +219,7 @@ class Player
                     Health = int.Parse(inputs[6]),
                     MaxHealth = int.Parse(inputs[7]),
                     AttackDamage = int.Parse(inputs[9]),
+                    HeroType = (HeroType) Enum.Parse(typeof(HeroType), inputs[19], true),
                     ItemsOwned = int.Parse(inputs[21])
                 };
             else
@@ -233,7 +245,6 @@ class Player
                 // int mana = int.Parse(inputs[16]);
                 // int maxMana = int.Parse(inputs[17]);
                 // int manaRegeneration = int.Parse(inputs[18]);
-                // string heroType = inputs[19]; // DEADPOOL, VALKYRIE, DOCTOR_STRANGE, HULK, IRONMAN
                 // int isVisible = int.Parse(inputs[20]); // 0 if it isn't
                 // int itemsOwned = int.Parse(inputs[21]); // useful from wood1
         }
