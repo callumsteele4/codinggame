@@ -29,6 +29,20 @@ class Location
         X = x;
         Y = y;
     }
+
+    public int DistanceFrom(Location location)
+    {
+        return (int) Math.Floor(
+            Math.Sqrt(
+                Math.Pow(Math.Abs(X - location.X), 2)
+                +
+                Math.Pow(Math.Abs(Y - location.Y), 2)));
+    }
+
+    public bool LocationIsInRange(Location location, int range)
+    {
+        return DistanceFrom(location) < range;
+    }
     
     public static bool operator== (Location location1, Location location2)
     {
@@ -87,6 +101,7 @@ class Hero : Entity
     public int Skill1Cooldown { get; set; }
     public int Skill2Cooldown { get; set; }
     public int Skill3Cooldown { get; set; }
+    public int Mana { get; set; }
 
     public bool HasItemSpace => ItemsOwned < 3;
     public bool HasLowHealth => Deniable;
@@ -235,6 +250,7 @@ class Player
                     Skill1Cooldown = int.Parse(inputs[13]),
                     Skill2Cooldown = int.Parse(inputs[14]),
                     Skill3Cooldown = int.Parse(inputs[15]),
+                    Mana = int.Parse(inputs[16]),
                     HeroType = (HeroType) Enum.Parse(typeof(HeroType), inputs[19], true),
                     ItemsOwned = int.Parse(inputs[21])
                 };
@@ -255,7 +271,6 @@ class Player
                 // int movementSpeed = int.Parse(inputs[10]);
                 // int stunDuration = int.Parse(inputs[11]); // useful in bronze
                 // int goldValue = int.Parse(inputs[12]);
-                // int mana = int.Parse(inputs[16]);
                 // int maxMana = int.Parse(inputs[17]);
                 // int manaRegeneration = int.Parse(inputs[18]);
                 // int isVisible = int.Parse(inputs[20]); // 0 if it isn't
@@ -324,7 +339,7 @@ class Player
                             }
                             else if (
                                 playerHero.HeroType == HeroType.Doctor_Strange &&
-                                (playerHero.Skill1Cooldown == 0 || playerHero.Skill2Cooldown == 0) &&
+                                ((playerHero.Skill1Cooldown == 0 && playerHero.Mana >= 50) || (playerHero.Skill2Cooldown == 0 && playerHero.Mana >= 40)) &&
                                 (playerHero.HasLowHealth || (otherPlayerHero != null && otherPlayerHero.HasLowHealth)))
                             {
                                 var lowestHealthHero = otherPlayerHero == null || playerHero.Health < otherPlayerHero.Health ? playerHero : otherPlayerHero;
@@ -359,7 +374,18 @@ class Player
                                         .Where(e => e.Type == EntityType.Unit);
                                     var opponentTowerLocation = opponentEntities
                                         .Single(e => e.Type == EntityType.Tower).Location;
-                                    if (opponentUnits.Any() && opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)))
+                                    if (playerHero.HeroType == HeroType.Ironman &&
+                                        playerHero.Skill2Cooldown == 0 &&
+                                        playerHero.Mana >= 60 &&
+                                        opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 900)))
+                                    {
+                                        var opponentHeroInRange = opponentHeroes
+                                            .Where(h =>  h.Location.LocationIsInRange(playerHero.Location, 900))
+                                            .OrderByDescending(h => h.Location.DistanceFrom(playerHero.Location))
+                                            .First();
+                                        playerHero.Cast("FIREBALL", opponentHeroInRange.Location);
+                                    }
+                                    else if (opponentUnits.Any() && opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)))
                                         // TODO: Add some logic here to decide which hero to attack (closest / lowest health / etc)
                                         playerHero.AttackNearest(EntityType.Hero);
                                     else if (opponentUnits.Any() && opponentUnits.Any(u => Math.Abs(u.Location.X - opponentTowerLocation.X) > 150))
