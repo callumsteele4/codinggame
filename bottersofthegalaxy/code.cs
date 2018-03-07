@@ -88,7 +88,7 @@ class Hero : Entity
     public bool HasItemSpace => ItemsOwned < 3;
     public bool HasLowHealth => Deniable;
     
-    public void MoveToSafePosition(IEnumerable<Entity> playerUnits)
+    public void MoveToSafeLocation(IEnumerable<Entity> playerUnits)
     {
         var foremostUnit = Team == 0
             ? playerUnits.OrderByDescending(e => e.Location.X).First()
@@ -101,11 +101,11 @@ class Hero : Entity
         Console.WriteLine($"MOVE {destinationX} {foremostUnit.Location.Y}");
     }
 
-    public bool BehindFrontLine(IEnumerable<Entity> playerUnits)
+    public bool InUnsafeLocation(IEnumerable<Entity> playerUnits)
     {
         return Team == 0
-            ? Location.X < playerUnits.Max(u => u.Location.X)
-            : Location.X > playerUnits.Min(u => u.Location.X);
+            ? Location.X >= playerUnits.Max(u => u.Location.X)
+            : Location.X <= playerUnits.Min(u => u.Location.X);
     }
 
     public void MoveTo(Location location)
@@ -128,6 +128,16 @@ class Hero : Entity
         else
             // TODO: Improve this logic - coordinate attacks between heroes
             AttackNearest(EntityType.Unit);
+    }
+
+    public void RetreatAndDefendTower(Entity playerTower, IEnumerable<Entity> opponentUnits)
+    {
+        if (Location != playerTower.Location)
+            MoveTo(playerTower.Location);
+        else if (opponentUnits.Any())
+            AttackNearest(EntityType.Unit);
+        else
+            AttackNearest(EntityType.Hero);
     }
     
     public void AttackNearest(EntityType entityType)
@@ -158,6 +168,90 @@ class Item
     public int MoveSpeed { get; set; }
     public int ManaRegeneration { get; set; }
     public bool IsPotion { get; set; }
+
+    public bool Affordable(int gold) => Cost <= gold;
+}
+
+class Round
+{
+    private int _playerTeam;
+    private int _gold;
+    private Item[] _items;
+    private Entity[] _entities;
+
+    private IEnumerable<Item> _healthPotions = _items.Where(i => i.IsPotion && i.Health > 0);
+
+    private IEnumerable<Entity> _playerEntities = _entities.Where(e => e.Team == _playerTeam);
+    private IEnumerable<Entity> _playerUnits = _playerEntities.Where(e => e.Type == EntityType.Unit);
+    private IEnumerable<Hero> _playerHeroes = _playerEntities.Where(e => e.Type == EntityType.Hero).Select(h => (Hero) h);
+    private Entity _playerTower = _playerEntities.Single(e => e.Type == EntityType.Tower);
+    private Hero _ironman = _playerHeroes.Single(e => e.HeroType == HeroType.Ironman);
+    private Hero _doctorStrange = _playerHeroes.Single(e => e.HeroType == HeroType.Doctor_Strange);
+
+    private IEnumerable<Entity> _opponentEntities = _entities.Where(e => e.Team != playerTeam);
+    private IEnumerable<Entity> _opponentUnits = _opponentEntities.Where(e => e.Team != playerTeam);
+                var opponentUnits = opponentEntities
+                    .Where(e => e.Type == EntityType.Unit);
+
+    public Round(int playerTeam, Item[] items, Entity[] entities, int gold)
+    {
+        _playerTeam = playerTeam;
+        _gold = gold;
+        _items = items;
+        _entities = entities;
+    }
+
+    public IEnumerable<Hero> EnsureSafe(IEnumerable<Hero> playerHeroes)
+    {
+        // If there are no friendly units, DEFEND THE TOWER
+        if (!_playerUnits.Any())
+        {
+            _ironman.RetreatAndDefendTower(_playerTower, _opponentUnits);
+            _doctorStrange.RetreatAndDefendTower(_playerTower, _opponentUnits);
+        }
+        // Make sure we're in a safe place, behind the front line
+        else if (_ironman.InUnsafeLocation() || _doctorStrange.InUnsafeLocation())
+        {
+            _ironman.MoveToSafeLocation();
+            _doctorStrange.MoveToSafeLocation();
+        }
+        // Drink a potion if on low health
+        else if ((_ironman.HasLowHealth || _doctorStrange.HasLowHealth) && _healthPotions.Any(hp  => hp.Affordable(_gold)))
+        {
+            
+        }
+        // if (playerHero.HasLowHealth
+        //     && gold >= healthPotions.Min(hp => hp.Cost)
+        //     && (otherPlayerHero == null || playerHero.Health <= otherPlayerHero.Health))
+        // {
+        //     var bestHealthPotionCanAfford = healthPotions
+        //         .Where(hp => hp.Cost <= gold)
+        //         .OrderByDescending(hp => hp.Cost)
+        //         .First();
+        //     playerHero.BuyItem(bestHealthPotionCanAfford.Name);
+        //     gold -= bestHealthPotionCanAfford.Cost;
+        // }
+        // else if (playerHero.HasLowHealth && otherPlayerHero != null && !otherPlayerHero.HasLowHealth)
+        //     playerHero.MoveTo(playerTowerLocation);
+        // // TODO: Sell item if both heroes have low health
+    }
+
+    public void MakeMoves()
+    {
+        EnsureSafe();
+        // Safety checks:
+            // Are the heroes in unsafe places?
+            // Are the heroes low on health?
+            // Are the heroes attackable?
+        // Last hit checks:
+            // Anything deniable in range?
+            // Anything last hittable in range?
+            // Can we combine attacks for a deny / last-hit?
+        // Other:
+            // Can we buy items?
+            // Can we use skills?
+            // Can we attack any units or heroes or towers or groots?
+    }
 }
 
 class Player
@@ -258,7 +352,7 @@ class Player
         var items = GetItems();
         var healthPotions = items.Where(i => i.IsPotion && i.Health > 0);
 
-        var roundCount = 0;
+        var firstHeroPick = true;
         while (true)
         {
             var gold = int.Parse(Console.ReadLine());
@@ -269,87 +363,86 @@ class Player
 
             if (roundType < 0)
             {
-                if (roundCount == 0)
+                if (firstHeroPick)
+                {
                     Console.WriteLine("IRONMAN");
-                else if (roundCount == 1)
+                    firstHeroPick = false;
+                }
+                else
                     Console.WriteLine("DOCTOR_STRANGE");
             }
             else
             {
-                var playerEntities = entities.Where(e => e.Team == playerTeam);
-                var playerUnits = playerEntities.Where(e => e.Type == EntityType.Unit);
-                var playerTowerLocation = playerEntities.Single(e => e.Type == EntityType.Tower).Location;
-                var playerHeroes = playerEntities.Where(e => e.Type == EntityType.Hero).Select(h => (Hero) h);
+                var round = new Round(playerTeam, items, gold, entities);
+                round.MakeMoves();
 
-                // TODO: Explore an alternative approach to looping through heroes, might make coordination easier
-                foreach (var playerHero in playerHeroes)
-                {
-                    var otherPlayerHero = playerHeroes.SingleOrDefault(h => h != playerHero);
-                    if (!playerUnits.Any())
-                    {
-                        if (playerHero.Location != playerTowerLocation)
-                            playerHero.MoveTo(playerTowerLocation);
-                        else
-                            playerHero.AttackNearest(EntityType.Unit);
-                    }
-                    else
-                    {
-                        if (!playerHero.BehindFrontLine(playerUnits))
-                            playerHero.MoveToSafePosition(playerUnits);
-                        else
-                        {
-                            if (playerHero.HasLowHealth
-                                && gold >= healthPotions.Min(hp => hp.Cost)
-                                && (otherPlayerHero == null || playerHero.Health <= otherPlayerHero.Health))
-                            {
-                                var bestHealthPotionCanAfford = healthPotions
-                                    .Where(hp => hp.Cost <= gold)
-                                    .OrderByDescending(hp => hp.Cost)
-                                    .First();
-                                playerHero.BuyItem(bestHealthPotionCanAfford.Name);
-                                gold -= bestHealthPotionCanAfford.Cost;
-                            }
-                            else if (playerHero.HasLowHealth && otherPlayerHero != null && !otherPlayerHero.HasLowHealth)
-                                playerHero.MoveTo(playerTowerLocation);
-                            // TODO: Sell item if both heroes have low health
-                            else
-                            {
-                                var availableDamageItemsToBuy = items
-                                    .Where(i => i.Cost <= gold - healthPotions.Min(hp => hp.Cost) && i.Damage > 0);
-                                if (availableDamageItemsToBuy.Any() && playerHero.HasItemSpace)
-                                {
-                                    var bestItemForDamage = availableDamageItemsToBuy
-                                        .OrderByDescending(i => i.Damage)
-                                        .First();
-                                    playerHero.BuyItem(bestItemForDamage.Name);
-                                    gold -= bestItemForDamage.Cost;
-                                }
-                                else
-                                {
-                                    var opponentEntities = entities
-                                        .Where(e => e.Team != playerTeam);
-                                    var opponentHeroes = opponentEntities
-                                        .Where(e => e.Type == EntityType.Hero)
-                                        .Select(h => (Hero) h);
-                                    var opponentUnits = opponentEntities
-                                        .Where(e => e.Type == EntityType.Unit);
-                                    var opponentTowerLocation = opponentEntities
-                                        .Single(e => e.Type == EntityType.Tower).Location;
-                                    if (opponentUnits.Any() && opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)))
-                                        // TODO: Add some logic here to decide which hero to attack (closest / lowest health / etc)
-                                        playerHero.AttackNearest(EntityType.Hero);
-                                    else if (opponentUnits.Any() && opponentUnits.Any(u => Math.Abs(u.Location.X - opponentTowerLocation.X) > 150))
-                                        playerHero.AttemptToLastHit(playerUnits, opponentUnits);
-                                    else
-                                        playerHero.Wait();
-                                    // TODO: Special attacks if off-cooldown
-                                }
-                            }
-                        }
-                    }
-                }
+                // foreach (var playerHero in playerHeroes)
+                // {
+                //     var otherPlayerHero = playerHeroes.SingleOrDefault(h => h != playerHero);
+                //     if (!playerUnits.Any())
+                //     {
+                //         if (playerHero.Location != playerTowerLocation)
+                //             playerHero.MoveTo(playerTowerLocation);
+                //         else
+                //             playerHero.AttackNearest(EntityType.Unit);
+                //     }
+                //     else
+                //     {
+                //         if (!playerHero.BehindFrontLine(playerUnits))
+                //             playerHero.MoveToSafePosition(playerUnits);
+                //         else
+                //         {
+                //             if (playerHero.HasLowHealth
+                //                 && gold >= healthPotions.Min(hp => hp.Cost)
+                //                 && (otherPlayerHero == null || playerHero.Health <= otherPlayerHero.Health))
+                //             {
+                //                 var bestHealthPotionCanAfford = healthPotions
+                //                     .Where(hp => hp.Cost <= gold)
+                //                     .OrderByDescending(hp => hp.Cost)
+                //                     .First();
+                //                 playerHero.BuyItem(bestHealthPotionCanAfford.Name);
+                //                 gold -= bestHealthPotionCanAfford.Cost;
+                //             }
+                //             else if (playerHero.HasLowHealth && otherPlayerHero != null && !otherPlayerHero.HasLowHealth)
+                //                 playerHero.MoveTo(playerTowerLocation);
+                //             // TODO: Sell item if both heroes have low health
+                //             else
+                //             {
+                //                 var availableDamageItemsToBuy = items
+                //                     .Where(i => i.Cost <= gold - healthPotions.Min(hp => hp.Cost) && i.Damage > 0);
+                //                 if (availableDamageItemsToBuy.Any() && playerHero.HasItemSpace)
+                //                 {
+                //                     var bestItemForDamage = availableDamageItemsToBuy
+                //                         .OrderByDescending(i => i.Damage)
+                //                         .First();
+                //                     playerHero.BuyItem(bestItemForDamage.Name);
+                //                     gold -= bestItemForDamage.Cost;
+                //                 }
+                //                 else
+                //                 {
+                //                     var opponentEntities = entities
+                //                         .Where(e => e.Team != playerTeam);
+                //                     var opponentHeroes = opponentEntities
+                //                         .Where(e => e.Type == EntityType.Hero)
+                //                         .Select(h => (Hero) h);
+                //                     var opponentUnits = opponentEntities
+                //                         .Where(e => e.Type == EntityType.Unit);
+                //                     var opponentTowerLocation = opponentEntities
+                //                         .Single(e => e.Type == EntityType.Tower).Location;
+                //                     if (opponentUnits.Any() && opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)))
+                //                         // TODO: Add some logic here to decide which hero to attack (closest / lowest health / etc)
+                //                         playerHero.AttackNearest(EntityType.Hero);
+                //                     else if (opponentUnits.Any() && opponentUnits.Any(u => Math.Abs(u.Location.X - opponentTowerLocation.X) > 150))
+                //                         playerHero.AttemptToLastHit(playerUnits, opponentUnits);
+                //                     else
+                //                         playerHero.Wait();
+                //                     // TODO: Special attacks if off-cooldown
+                //                 }
+                //             }
+                //         }
+                //     }
+                // }
             }
-            roundCount++;
         }
     }
 }
