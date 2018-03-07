@@ -115,6 +115,7 @@ class Hero : Entity
         else if (lastHittableUnits.Any())
             Console.WriteLine($"ATTACK {lastHittableUnits.First().Id}");
         else
+            // TODO: Improve this logic - coordinate attacks between heroes
             AttackNearest(EntityType.Unit);
     }
     
@@ -269,6 +270,7 @@ class Player
                 var playerTowerLocation = playerEntities.Single(e => e.Type == EntityType.Tower).Location;
                 var playerHeroes = playerEntities.Where(e => e.Type == EntityType.Hero).Select(h => (Hero) h);
 
+                // TODO: Explore an alternative approach to looping through heroes, might make coordination easier
                 foreach (var playerHero in playerHeroes)
                 {
                     var otherPlayerHero = playerHeroes.SingleOrDefault(h => h != playerHero);
@@ -326,9 +328,7 @@ class Player
                                         // TODO: Add some logic here to decide which hero to attack (closest / lowest health / etc)
                                         playerHero.AttackNearest(EntityType.Hero);
                                     else if (opponentUnits.Any() && opponentUnits.Any(u => Math.Abs(u.Location.X - opponentTowerLocation.X) > 150))
-                                    {
                                         playerHero.AttemptToLastHit(playerUnits, opponentUnits);
-                                    }
                                     else
                                         playerHero.Wait();
                                     // TODO: Special attacks if off-cooldown
