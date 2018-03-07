@@ -327,7 +327,7 @@ class Player
                                 (playerHero.Skill1Cooldown == 0 || playerHero.Skill2Cooldown == 0) &&
                                 (playerHero.HasLowHealth || (otherPlayerHero != null && otherPlayerHero.HasLowHealth)))
                             {
-                                var lowestHealthHero = playerHero.Health < otherPlayerHero.Health ? playerHero : otherPlayerHero;
+                                var lowestHealthHero = otherPlayerHero == null || playerHero.Health < otherPlayerHero.Health ? playerHero : otherPlayerHero;
                                 if (playerHero.Skill1Cooldown == 0)
                                     playerHero.Cast("AOEHEAL", lowestHealthHero.Location);
                                 else
