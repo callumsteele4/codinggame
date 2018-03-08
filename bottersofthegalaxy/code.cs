@@ -87,9 +87,10 @@ class Entity
     public int Health { get; set; }
     public int MaxHealth { get; set; }
     public int AttackDamage { get; set; }
+    public int MovementSpeed { get; set; }
     public int ItemsOwned { get; set; }
 
-    public bool CanLastHit(int attackDamage)
+    public bool CanBeLastHit(int attackDamage)
     {
         return Health <= attackDamage;
     }
@@ -113,8 +114,8 @@ class Hero : Entity
             : playerUnits.OrderBy(e => e.Location.X).First();
 
         var destinationX = Team == 0
-            ? foremostUnit.Location.X - 50
-            : foremostUnit.Location.X + 50;
+            ? foremostUnit.Location.X - 150
+            : foremostUnit.Location.X + 150;
 
         Console.WriteLine($"MOVE {destinationX} {foremostUnit.Location.Y}");
     }
@@ -131,22 +132,14 @@ class Hero : Entity
         Console.WriteLine($"MOVE {location.X} {location.Y}");
     }
 
-    public void AttemptToLastHit(IEnumerable<Entity> playerUnits, IEnumerable<Entity> opponentUnits)
+    public void LastHit(IEnumerable<Entity> lastHittableUnits)
     {
-        // TODO: Check range, are these units actually deniable or last hittable in this turn?
-        var deniableUnits = playerUnits
-            .Where(u => u.Deniable && u.CanLastHit(AttackDamage))
-            .OrderBy(u => u.Health);
-        var lastHittableUnits = opponentUnits
-            .Where( u => u.CanLastHit(AttackDamage))
-            .OrderByDescending(u => u.Health);
-        if (deniableUnits.Any())
-            Console.WriteLine($"ATTACK {deniableUnits.First().Id}");
-        else if (lastHittableUnits.Any())
-            Console.WriteLine($"ATTACK {lastHittableUnits.First().Id}");
-        else
-            // TODO: Improve this logic - coordinate attacks between heroes
-            AttackNearest(EntityType.Unit);
+        var bestOptionToLastHit = lastHittableUnits
+            .OrderBy(u => u.Location.DistanceFrom(Location))
+            .ThenBy(u => u.Health)
+            .First();
+
+        Attack(bestOptionToLastHit.Id);
     }
 
     public void Attack(int entityId)
@@ -177,6 +170,15 @@ class Hero : Entity
     public void Wait()
     {
         Console.WriteLine("JUST CHILLING");
+    }
+
+    public bool CanAttackUnitThisTurn(Entity unit)
+    {
+        var maxPossibleDistanceFromUnit = unit.Location.DistanceFrom(Location) + unit.MovementSpeed;
+        var maximumAttackDistanceInSingleTurn = MovementSpeed * 0.8 + AttackRange;
+        
+        // TODO: Make this more accurate, units will only ever move to the right or left, and we know which way.
+        return maxPossibleDistanceFromUnit <= maximumAttackDistanceInSingleTurn;
     }
 }
 
@@ -253,6 +255,7 @@ class Player
                     Health = int.Parse(inputs[6]),
                     MaxHealth = int.Parse(inputs[7]),
                     AttackDamage = int.Parse(inputs[9]),
+                    MovementSpeed = int.Parse(inputs[10]),
                     Skill1Cooldown = int.Parse(inputs[13]),
                     Skill2Cooldown = int.Parse(inputs[14]),
                     Skill3Cooldown = int.Parse(inputs[15]),
@@ -271,10 +274,10 @@ class Player
                     Health = int.Parse(inputs[6]),
                     MaxHealth = int.Parse(inputs[7]),
                     AttackDamage = int.Parse(inputs[9]),
+                    MovementSpeed = int.Parse(inputs[10]),
                     ItemsOwned = int.Parse(inputs[21])
                 };
                 // int shield = int.Parse(inputs[8]); // useful in bronze
-                // int movementSpeed = int.Parse(inputs[10]);
                 // int stunDuration = int.Parse(inputs[11]); // useful in bronze
                 // int goldValue = int.Parse(inputs[12]);
                 // int maxMana = int.Parse(inputs[17]);
@@ -349,7 +352,7 @@ class Player
                                 (playerHero.HasLowHealth || (otherPlayerHero != null && otherPlayerHero.HasLowHealth && otherPlayerHero.Location.LocationIsInRange(playerHero.Location, 250))))
                             {
                                 var lowestHealthHero = otherPlayerHero == null || playerHero.Health < otherPlayerHero.Health ? playerHero : otherPlayerHero;
-                                if (playerHero.Skill1Cooldown == 0)
+                                if (playerHero.Skill1Cooldown == 0 && playerHero.Mana >= 50)
                                     playerHero.Cast("AOEHEAL", lowestHealthHero.Location);
                                 else
                                     playerHero.Cast("SHIELD", lowestHealthHero.Id);
@@ -382,7 +385,18 @@ class Player
                                         .Where(e => e.Type == EntityType.Unit);
                                     var opponentTowerLocation = opponentEntities
                                         .Single(e => e.Type == EntityType.Tower).Location;
-                                    if (playerHero.HeroType == HeroType.Ironman &&
+                                    var attackableUnits = opponentUnits
+                                        .Concat(playerUnits.Where(u => u.Deniable))
+                                        .Where(u => playerHero.CanAttackUnitThisTurn(u) && !u.Location.LocationIsInRange(opponentTowerLocation, 200));
+                                    var lastHittableUnits = attackableUnits
+                                        .Where(u => u.CanBeLastHit(playerHero.AttackDamage));
+                                    var coordinatedLastHittableUnits = attackableUnits
+                                        .Where(u => u.CanBeLastHit(playerHero.AttackDamage + otherPlayerHero.AttackDamage));
+                                    if (lastHittableUnits.Any())
+                                        playerHero.LastHit(lastHittableUnits);
+                                    else if (coordinatedLastHittableUnits.Any())
+                                        playerHero.LastHit(coordinatedLastHittableUnits);
+                                    else if (playerHero.HeroType == HeroType.Ironman &&
                                         playerHero.Skill2Cooldown == 0 &&
                                         playerHero.Mana >= 60 &&
                                         opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 900)))
@@ -430,10 +444,8 @@ class Player
                                         }
                                         playerHero.Attack(bestOpponentHeroTarget.Id);
                                     }
-                                    else if (opponentUnits.Any() && opponentUnits.Any(u => Math.Abs(u.Location.X - opponentTowerLocation.X) > 150))
-                                        playerHero.AttemptToLastHit(playerUnits, opponentUnits);
                                     else
-                                        playerHero.Wait();
+                                        playerHero.MoveToSafePosition(playerUnits);
                                 }
                             }
                         }
