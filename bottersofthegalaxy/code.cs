@@ -19,6 +19,12 @@ enum HeroType
     Ironman
 }
 
+enum LocationType
+{
+    Spawn,
+    Bush
+}
+
 class Location
 {
     public int X { get; set; }
@@ -46,14 +52,12 @@ class Location
     
     public static bool operator== (Location location1, Location location2)
     {
-        return location1.X == location2.X
-            && location1.Y == location2.Y;
+        return location1.X == location2.X && location1.Y == location2.Y;
     }
 
     public static bool operator!= (Location location1, Location location2)
     {
-        return location1.X != location2.X
-            || location1.Y != location2.Y;
+        return location1.X != location2.X || location1.Y != location2.Y;
     }
     
     public override bool Equals(object obj)
@@ -75,9 +79,16 @@ class Location
     }
 }
 
+class TypedLocation : Location
+{
+    public LocationType Type { get; set; }
+
+    public TypedLocation(int x, int y) : base(x, y) {}
+}
+
 class Entity
 {
-    public bool Deniable => ((double)Health / (double)MaxHealth) <= 0.4;
+    public bool Deniable => (((double)Health + (double) Shield) / (double)MaxHealth) <= 0.4;
 
     public int Id { get; set; }
     public int Team { get; set; }
@@ -86,13 +97,17 @@ class Entity
     public int AttackRange { get; set; }
     public int Health { get; set; }
     public int MaxHealth { get; set; }
+    public int Shield { get; set; }
     public int AttackDamage { get; set; }
     public int MovementSpeed { get; set; }
     public int ItemsOwned { get; set; }
 
+    public bool Killed { get; set; }
+    public bool PriorityTarget { get; set; }
+
     public bool CanBeLastHit(int attackDamage)
     {
-        return Health <= attackDamage;
+        return Health + Shield <= attackDamage;
     }
 }
 
@@ -105,7 +120,7 @@ class Hero : Entity
     public int Mana { get; set; }
 
     public bool HasItemSpace => ItemsOwned < 3;
-    public bool HasLowHealth => Deniable;
+    public bool HasLowHealth => (((double)Health + (double) Shield) / (double)MaxHealth) <= 0.7;
     
     public void MoveToSafePosition(IEnumerable<Entity> playerUnits)
     {
@@ -114,8 +129,8 @@ class Hero : Entity
             : playerUnits.OrderBy(e => e.Location.X).First();
 
         var destinationX = Team == 0
-            ? foremostUnit.Location.X - 150
-            : foremostUnit.Location.X + 150;
+            ? foremostUnit.Location.X - 70
+            : foremostUnit.Location.X + 70;
 
         Console.WriteLine($"MOVE {destinationX} {foremostUnit.Location.Y}");
     }
@@ -134,11 +149,22 @@ class Hero : Entity
 
     public void LastHit(IEnumerable<Entity> lastHittableUnits)
     {
-        var bestOptionToLastHit = lastHittableUnits
-            .OrderBy(u => u.Location.DistanceFrom(Location))
-            .ThenBy(u => u.Health)
-            .First();
+        foreach (var lastHittableUnit in lastHittableUnits)
+            Console.Error.WriteLine($"Current Hero: {HeroType} Id: {lastHittableUnit.Id} Health: {lastHittableUnit.Health} Team: {lastHittableUnit.Team}");
+        var bestOptionToLastHit = lastHittableUnits.Any(u => u.PriorityTarget)
+            ? lastHittableUnits.Single(u => u.PriorityTarget)
+            : lastHittableUnits
+                .OrderBy(u => u.Team == Team)
+                .ThenBy(u => u.Location.DistanceFrom(Location))
+                .ThenBy(u => u.Health + u.Shield)
+                .First();
 
+        Console.Error.WriteLine($"Id: {bestOptionToLastHit.Id} Health: {bestOptionToLastHit.Health} Team: {bestOptionToLastHit.Team}");
+
+        bestOptionToLastHit.Killed = (bestOptionToLastHit.Health + bestOptionToLastHit.Shield) <= AttackDamage;
+        bestOptionToLastHit.PriorityTarget = !bestOptionToLastHit.Killed;
+
+        Console.Error.WriteLine($"Was killed: {bestOptionToLastHit.Killed} Is priority: {bestOptionToLastHit.PriorityTarget}");
         Attack(bestOptionToLastHit.Id);
     }
 
@@ -169,7 +195,7 @@ class Hero : Entity
 
     public void Wait()
     {
-        Console.WriteLine("JUST CHILLING");
+        Console.WriteLine("WAIT");
     }
 
     public bool CanAttackUnitThisTurn(Entity unit)
@@ -198,17 +224,21 @@ class Item
 
 class Player
 {
-    static void GetBushAndSpawnPoints()
+    static TypedLocation[] GetBushAndSpawnPoints()
     {
         int bushAndSpawnPointCount = int.Parse(Console.ReadLine()); // useful from wood1, represents the number of bushes and the number of places where neutral units can spawn
+        var typedLocations = new TypedLocation[bushAndSpawnPointCount];
         for (int i = 0; i < bushAndSpawnPointCount; i++)
         {
             var inputs = Console.ReadLine().Split(' ');
-            string entityType = inputs[0]; // BUSH, from wood1 it can also be SPAWN
-            int x = int.Parse(inputs[1]);
-            int y = int.Parse(inputs[2]);
-            int radius = int.Parse(inputs[3]);
+            var locationType = (LocationType) Enum.Parse(typeof(LocationType), inputs[0], true);
+            typedLocations[i] = new TypedLocation(int.Parse(inputs[1]), int.Parse(inputs[2]))
+            {
+                Type = locationType
+            };
+            // int radius = int.Parse(inputs[3]);
         }
+        return typedLocations;
     }
 
     static Item[] GetItems()
@@ -254,6 +284,7 @@ class Player
                     AttackRange = int.Parse(inputs[5]),
                     Health = int.Parse(inputs[6]),
                     MaxHealth = int.Parse(inputs[7]),
+                    Shield = int.Parse(inputs[8]),
                     AttackDamage = int.Parse(inputs[9]),
                     MovementSpeed = int.Parse(inputs[10]),
                     Skill1Cooldown = int.Parse(inputs[13]),
@@ -273,11 +304,11 @@ class Player
                     AttackRange = int.Parse(inputs[5]),
                     Health = int.Parse(inputs[6]),
                     MaxHealth = int.Parse(inputs[7]),
+                    Shield = int.Parse(inputs[8]),
                     AttackDamage = int.Parse(inputs[9]),
                     MovementSpeed = int.Parse(inputs[10]),
                     ItemsOwned = int.Parse(inputs[21])
                 };
-                // int shield = int.Parse(inputs[8]); // useful in bronze
                 // int stunDuration = int.Parse(inputs[11]); // useful in bronze
                 // int goldValue = int.Parse(inputs[12]);
                 // int maxMana = int.Parse(inputs[17]);
@@ -291,7 +322,7 @@ class Player
     static void Main(string[] args)
     {
         var playerTeam = int.Parse(Console.ReadLine());
-        GetBushAndSpawnPoints();
+        var bushAndSpawnPoints = GetBushAndSpawnPoints();
         var items = GetItems();
         var healthPotions = items.Where(i => i.IsPotion && i.Health > 0);
 
@@ -301,6 +332,11 @@ class Player
             var gold = int.Parse(Console.ReadLine());
             var enemyGold = int.Parse(Console.ReadLine());
             var roundType = int.Parse(Console.ReadLine()); // a positive value will show the number of heroes that await a command
+
+            var availableDamageItemsToBuy = items
+                .Where(i => i.Cost <= gold - healthPotions.Min(hp => hp.Cost) &&  i.Damage > 0);
+            var availableMp5ItemsToBuy = items
+                .Where(i => i.Cost <= gold - healthPotions.Min(hp => hp.Cost) &&  i.ManaRegeneration > 1);
 
             var entities = GetEntities();
 
@@ -315,19 +351,43 @@ class Player
             {
                 var playerEntities = entities.Where(e => e.Team == playerTeam);
                 var playerUnits = playerEntities.Where(e => e.Type == EntityType.Unit);
+                var playerTower = playerEntities.Single(e => e.Type == EntityType.Tower);
                 var playerTowerLocation = playerEntities.Single(e => e.Type == EntityType.Tower).Location;
                 var playerHeroes = playerEntities.Where(e => e.Type == EntityType.Hero).Select(h => (Hero) h);
 
+                var closestBushToPlayerTower = bushAndSpawnPoints
+                    .Where(p => p.Type == LocationType.Bush)
+                    .OrderBy(p => p.DistanceFrom(playerTowerLocation))
+                    .FirstOrDefault();
+                
                 // TODO: Explore an alternative approach to looping through heroes, might make coordination easier
                 foreach (var playerHero in playerHeroes)
                 {
                     var otherPlayerHero = playerHeroes.SingleOrDefault(h => h != playerHero);
                     if (!playerUnits.Any())
                     {
-                        if (playerHero.Location != playerTowerLocation)
-                            playerHero.MoveTo(playerTowerLocation);
+                        if (!Object.ReferenceEquals(null, closestBushToPlayerTower))
+                        {
+                            if (playerHero.Location != closestBushToPlayerTower)
+                            {
+                                playerHero.MoveTo(closestBushToPlayerTower);
+                            }
+                            else
+                            {
+                                playerHero.Wait();
+                            }
+                        }
                         else
-                            playerHero.AttackNearest(EntityType.Unit);
+                        {
+                            if (playerHero.Location != playerTowerLocation)
+                            {
+                                playerHero.MoveTo(playerTowerLocation);
+                            }
+                            else
+                            {
+                                playerHero.AttackNearest(EntityType.Unit);
+                            }
+                        }
                     }
                     else
                     {
@@ -337,7 +397,7 @@ class Player
                         {
                             if (playerHero.HasLowHealth
                                 && gold >= healthPotions.Min(hp => hp.Cost)
-                                && (otherPlayerHero == null || playerHero.Health <= otherPlayerHero.Health))
+                                && (otherPlayerHero == null || playerHero.Health + playerHero.Shield <= otherPlayerHero.Health + otherPlayerHero.Shield))
                             {
                                 var bestHealthPotionCanAfford = healthPotions
                                     .Where(hp => hp.Cost <= gold)
@@ -348,105 +408,120 @@ class Player
                             }
                             else if (
                                 playerHero.HeroType == HeroType.Doctor_Strange &&
-                                ((playerHero.Skill1Cooldown == 0 && playerHero.Mana >= 50) || (playerHero.Skill2Cooldown == 0 && playerHero.Mana >= 40)) &&
-                                (playerHero.HasLowHealth || (otherPlayerHero != null && otherPlayerHero.HasLowHealth && otherPlayerHero.Location.LocationIsInRange(playerHero.Location, 250))))
+                                playerHero.Skill1Cooldown == 0 && 
+                                playerHero.Mana >= 50 &&
+                                (((playerHero.Health + playerHero.Shield) < playerHero.MaxHealth) || (otherPlayerHero != null && (otherPlayerHero.Health + otherPlayerHero.Shield) < otherPlayerHero.MaxHealth && otherPlayerHero.Location.LocationIsInRange(playerHero.Location, 250))))
                             {
-                                var lowestHealthHero = otherPlayerHero == null || playerHero.Health < otherPlayerHero.Health ? playerHero : otherPlayerHero;
-                                if (playerHero.Skill1Cooldown == 0 && playerHero.Mana >= 50)
-                                    playerHero.Cast("AOEHEAL", lowestHealthHero.Location);
-                                else
-                                    playerHero.Cast("SHIELD", lowestHealthHero.Id);
+                                var lowestHealthHero = otherPlayerHero == null || (playerHero.Health + playerHero.Shield) < (otherPlayerHero.Health + otherPlayerHero.Shield) ? playerHero : otherPlayerHero;
+                                playerHero.Cast("AOEHEAL", lowestHealthHero.Location);
                             }
-                            else if (playerHero.HasLowHealth && otherPlayerHero != null && !otherPlayerHero.HasLowHealth)
-                                playerHero.MoveTo(playerTowerLocation);
+                            else if (
+                                playerHero.HeroType == HeroType.Doctor_Strange &&
+                                playerHero.Skill2Cooldown == 0 &&
+                                playerHero.Mana >= 40 &&
+                                (playerHero.HasLowHealth || (otherPlayerHero != null && otherPlayerHero.HasLowHealth && otherPlayerHero.Location.LocationIsInRange(playerHero.Location, 500))))
+                            {
+                                var lowestHealthHero = otherPlayerHero == null || (playerHero.Health + playerHero.Shield) < (otherPlayerHero.Health + otherPlayerHero.Shield) ? playerHero : otherPlayerHero;
+                                playerHero.Cast("SHIELD", lowestHealthHero.Id);
+                            }
                             // TODO: Sell item if both heroes have low health
                             else
                             {
-                                // TODO: Look at dmg per gold for ironman
-                                // TODO: Look at mp5 per gold for doctor strange
-                                var availableDamageItemsToBuy = items
-                                    .Where(i => i.Cost <= gold - healthPotions.Min(hp => hp.Cost) && i.Damage > 0);
-                                if (availableDamageItemsToBuy.Any() && playerHero.HasItemSpace)
+                                var opponentEntities = entities
+                                    .Where(e => e.Team != playerTeam);
+                                var opponentHeroes = opponentEntities
+                                    .Where(e => e.Type == EntityType.Hero)
+                                    .Select(h => (Hero) h);
+                                var opponentUnits = opponentEntities
+                                    .Where(e => e.Type == EntityType.Unit);
+                                var opponentTowerLocation = opponentEntities
+                                    .Single(e => e.Type == EntityType.Tower).Location;
+                                var attackableUnits = opponentUnits
+                                    .Concat(playerUnits.Where(u => u.Deniable))
+                                    .Where(u => !u.Killed && playerHero.CanAttackUnitThisTurn(u) && !u.Location.LocationIsInRange(opponentTowerLocation, 200));
+                                var lastHittableUnits = attackableUnits
+                                    .Where(u => u.CanBeLastHit(playerHero.AttackDamage) || u.PriorityTarget);
+                                var coordinatedLastHittableUnits = attackableUnits
+                                    .Where(u => otherPlayerHero != null && otherPlayerHero.CanAttackUnitThisTurn(u) && u.CanBeLastHit(playerHero.AttackDamage + otherPlayerHero.AttackDamage));
+                                if (lastHittableUnits.Any())
+                                    playerHero.LastHit(lastHittableUnits);
+                                else if (playerHero.HeroType != HeroType.Doctor_Strange && coordinatedLastHittableUnits.Any())
+                                    playerHero.LastHit(coordinatedLastHittableUnits);
+                                else if (playerHero.HeroType == HeroType.Ironman &&
+                                    playerHero.Skill2Cooldown == 0 &&
+                                    playerHero.Mana >= 60 &&
+                                    opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 900)))
+                                {
+                                    var bestOpponentHeroInRange = opponentHeroes
+                                        .Where(h =>  h.Location.LocationIsInRange(playerHero.Location, 900))
+                                        .OrderByDescending(h => h.Location.DistanceFrom(playerHero.Location))
+                                        .First();
+                                    playerHero.Cast("FIREBALL", bestOpponentHeroInRange.Location);
+                                }
+                                else if (
+                                    playerHero.HeroType == HeroType.Doctor_Strange &&
+                                    playerHero.Skill3Cooldown == 0 &&
+                                    playerHero.Mana >= 40 &&
+                                    (opponentUnits.Count(u => u.Location.LocationIsInRange(playerHero.Location, (int) Math.Floor(u.AttackRange + u.MovementSpeed * 0.75))) < 3 || playerHero.Location.LocationIsInRange(playerTowerLocation, 400)) &&
+                                    opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 400)))
+                                {
+                                    var opponentHeroInRange = opponentHeroes
+                                        .Where(h => h.Location.LocationIsInRange(playerHero.Location, 400))
+                                        .OrderBy(h => h.Health)
+                                        .First();
+                                    playerHero.Cast("PULL", opponentHeroInRange.Id);
+                                }
+                                else if (opponentUnits.Any() &&
+                                            (opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)) ||
+                                            opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 100))))
+                                {
+                                    Hero bestOpponentHeroTarget;
+                                    if (opponentHeroes.Count(h => !h.BehindFrontLine(opponentUnits)) == 1)
+                                    {
+                                        bestOpponentHeroTarget = opponentHeroes
+                                            .Single(h => !h.BehindFrontLine(opponentHeroes));
+                                    }
+                                    else if (opponentHeroes.Count(h => !h.BehindFrontLine(opponentUnits)) ==  2)
+                                    {
+                                        bestOpponentHeroTarget = opponentHeroes
+                                            .OrderBy(h => h.Health + h.Shield)
+                                            .First();
+                                    }
+                                    else
+                                    {
+                                        bestOpponentHeroTarget = opponentHeroes
+                                            .Where(h => h.Location.LocationIsInRange(playerHero.Location, 125))
+                                            .OrderBy(h => h.Health + h.Shield)
+                                            .First();
+                                    }
+                                    playerHero.Attack(bestOpponentHeroTarget.Id);
+                                }
+                                else if (availableDamageItemsToBuy.Any() && playerHero.HasItemSpace && playerHero.HeroType == HeroType.Ironman)
                                 {
                                     var bestItemForDamage = availableDamageItemsToBuy
-                                        .OrderByDescending(i => i.Damage)
+                                        .OrderByDescending(i => i.Damage / i.Cost)
                                         .First();
                                     playerHero.BuyItem(bestItemForDamage.Name);
                                     gold -= bestItemForDamage.Cost;
                                 }
-                                else
+                                else if (availableMp5ItemsToBuy.Any() && playerHero.HasItemSpace && playerHero.HeroType == HeroType.Doctor_Strange)
                                 {
-                                    var opponentEntities = entities
-                                        .Where(e => e.Team != playerTeam);
-                                    var opponentHeroes = opponentEntities
-                                        .Where(e => e.Type == EntityType.Hero)
-                                        .Select(h => (Hero) h);
-                                    var opponentUnits = opponentEntities
-                                        .Where(e => e.Type == EntityType.Unit);
-                                    var opponentTowerLocation = opponentEntities
-                                        .Single(e => e.Type == EntityType.Tower).Location;
-                                    var attackableUnits = opponentUnits
-                                        .Concat(playerUnits.Where(u => u.Deniable))
-                                        .Where(u => playerHero.CanAttackUnitThisTurn(u) && !u.Location.LocationIsInRange(opponentTowerLocation, 200));
-                                    var lastHittableUnits = attackableUnits
-                                        .Where(u => u.CanBeLastHit(playerHero.AttackDamage));
-                                    var coordinatedLastHittableUnits = attackableUnits
-                                        .Where(u => u.CanBeLastHit(playerHero.AttackDamage + otherPlayerHero.AttackDamage));
-                                    if (lastHittableUnits.Any())
-                                        playerHero.LastHit(lastHittableUnits);
-                                    else if (coordinatedLastHittableUnits.Any())
-                                        playerHero.LastHit(coordinatedLastHittableUnits);
-                                    else if (playerHero.HeroType == HeroType.Ironman &&
-                                        playerHero.Skill2Cooldown == 0 &&
-                                        playerHero.Mana >= 60 &&
-                                        opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 900)))
-                                    {
-                                        var bestOpponentHeroInRange = opponentHeroes
-                                            .Where(h =>  h.Location.LocationIsInRange(playerHero.Location, 900))
-                                            .OrderByDescending(h => h.Location.DistanceFrom(playerHero.Location))
-                                            .First();
-                                        playerHero.Cast("FIREBALL", bestOpponentHeroInRange.Location);
-                                    }
-                                    else if (
-                                        playerHero.HeroType == HeroType.Doctor_Strange &&
-                                        playerHero.Skill3Cooldown == 0 &&
-                                        playerHero.Mana >= 40 &&
-                                        opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 400)))
-                                    {
-                                        var opponentHeroInRange = opponentHeroes
-                                            .Where(h => h.Location.LocationIsInRange(playerHero.Location, 400))
-                                            .OrderBy(h => h.Health)
-                                            .First();
-                                        playerHero.Cast("PULL", opponentHeroInRange.Id);
-                                    }
-                                    else if (opponentUnits.Any() &&
-                                                (opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)) ||
-                                                opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 100))))
-                                    {
-                                        Hero bestOpponentHeroTarget;
-                                        if (opponentHeroes.Count(h => !h.BehindFrontLine(opponentUnits)) == 1)
-                                        {
-                                            bestOpponentHeroTarget = opponentHeroes
-                                                .Single(h => !h.BehindFrontLine(opponentHeroes));
-                                        }
-                                        else if (opponentHeroes.Count(h => !h.BehindFrontLine(opponentUnits)) ==  2)
-                                        {
-                                            bestOpponentHeroTarget = opponentHeroes
-                                                .OrderBy(h => h.Health)
-                                                .First();
-                                        }
-                                        else
-                                        {
-                                            bestOpponentHeroTarget = opponentHeroes
-                                                .Where(h => h.Location.LocationIsInRange(playerHero.Location, 125))
-                                                .OrderBy(h => h.Health)
-                                                .First();
-                                        }
-                                        playerHero.Attack(bestOpponentHeroTarget.Id);
-                                    }
-                                    else
-                                        playerHero.MoveToSafePosition(playerUnits);
+                                    var bestItemForMp5 = availableMp5ItemsToBuy
+                                        .OrderByDescending(i => i.ManaRegeneration / i.Cost)
+                                        .First();
+                                    playerHero.BuyItem(bestItemForMp5.Name);
+                                    gold -= bestItemForMp5.Cost;
                                 }
+                                else if (opponentUnits.Any(u => u.Location.LocationIsInRange(playerHero.Location, playerHero.AttackRange / 2) && !u.Killed))
+                                {
+                                    var lowestHealthInRangeOpponentUnit = opponentUnits
+                                        .Where(u => u.Location.LocationIsInRange(playerHero.Location, playerHero.AttackRange / 2) && !u.Killed)
+                                        .OrderBy(u => u.Health + u.Shield)
+                                        .First();
+                                    playerHero.Attack(lowestHealthInRangeOpponentUnit.Id);
+                                }
+                                else
+                                    playerHero.MoveToSafePosition(playerUnits);
                             }
                         }
                     }
