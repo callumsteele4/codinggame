@@ -133,6 +133,7 @@ class Hero : Entity
 
     public void AttemptToLastHit(IEnumerable<Entity> playerUnits, IEnumerable<Entity> opponentUnits)
     {
+        // TODO: Check range, are these units actually deniable or last hittable in this turn?
         var deniableUnits = playerUnits
             .Where(u => u.Deniable && u.CanLastHit(AttackDamage))
             .OrderBy(u => u.Health);
@@ -146,6 +147,11 @@ class Hero : Entity
         else
             // TODO: Improve this logic - coordinate attacks between heroes
             AttackNearest(EntityType.Unit);
+    }
+
+    public void Attack(int entityId)
+    {
+        Console.WriteLine($"ATTACK {entityId}");
     }
     
     public void AttackNearest(EntityType entityType)
@@ -340,7 +346,7 @@ class Player
                             else if (
                                 playerHero.HeroType == HeroType.Doctor_Strange &&
                                 ((playerHero.Skill1Cooldown == 0 && playerHero.Mana >= 50) || (playerHero.Skill2Cooldown == 0 && playerHero.Mana >= 40)) &&
-                                (playerHero.HasLowHealth || (otherPlayerHero != null && otherPlayerHero.HasLowHealth)))
+                                (playerHero.HasLowHealth || (otherPlayerHero != null && otherPlayerHero.HasLowHealth && otherPlayerHero.Location.LocationIsInRange(playerHero.Location, 250))))
                             {
                                 var lowestHealthHero = otherPlayerHero == null || playerHero.Health < otherPlayerHero.Health ? playerHero : otherPlayerHero;
                                 if (playerHero.Skill1Cooldown == 0)
@@ -353,6 +359,8 @@ class Player
                             // TODO: Sell item if both heroes have low health
                             else
                             {
+                                // TODO: Look at dmg per gold for ironman
+                                // TODO: Look at mp5 per gold for doctor strange
                                 var availableDamageItemsToBuy = items
                                     .Where(i => i.Cost <= gold - healthPotions.Min(hp => hp.Cost) && i.Damage > 0);
                                 if (availableDamageItemsToBuy.Any() && playerHero.HasItemSpace)
@@ -379,20 +387,53 @@ class Player
                                         playerHero.Mana >= 60 &&
                                         opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 900)))
                                     {
-                                        var opponentHeroInRange = opponentHeroes
+                                        var bestOpponentHeroInRange = opponentHeroes
                                             .Where(h =>  h.Location.LocationIsInRange(playerHero.Location, 900))
                                             .OrderByDescending(h => h.Location.DistanceFrom(playerHero.Location))
                                             .First();
-                                        playerHero.Cast("FIREBALL", opponentHeroInRange.Location);
+                                        playerHero.Cast("FIREBALL", bestOpponentHeroInRange.Location);
                                     }
-                                    else if (opponentUnits.Any() && opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)))
-                                        // TODO: Add some logic here to decide which hero to attack (closest / lowest health / etc)
-                                        playerHero.AttackNearest(EntityType.Hero);
+                                    else if (
+                                        playerHero.HeroType == HeroType.Doctor_Strange &&
+                                        playerHero.Skill3Cooldown == 0 &&
+                                        playerHero.Mana >= 40 &&
+                                        opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 400)))
+                                    {
+                                        var opponentHeroInRange = opponentHeroes
+                                            .Where(h => h.Location.LocationIsInRange(playerHero.Location, 400))
+                                            .OrderBy(h => h.Health)
+                                            .First();
+                                        playerHero.Cast("PULL", opponentHeroInRange.Id);
+                                    }
+                                    else if (opponentUnits.Any() &&
+                                                (opponentHeroes.Any(h => !h.BehindFrontLine(opponentUnits)) ||
+                                                opponentHeroes.Any(h => h.Location.LocationIsInRange(playerHero.Location, 100))))
+                                    {
+                                        Hero bestOpponentHeroTarget;
+                                        if (opponentHeroes.Count(h => !h.BehindFrontLine(opponentUnits)) == 1)
+                                        {
+                                            bestOpponentHeroTarget = opponentHeroes
+                                                .Single(h => !h.BehindFrontLine(opponentHeroes));
+                                        }
+                                        else if (opponentHeroes.Count(h => !h.BehindFrontLine(opponentUnits)) ==  2)
+                                        {
+                                            bestOpponentHeroTarget = opponentHeroes
+                                                .OrderBy(h => h.Health)
+                                                .First();
+                                        }
+                                        else
+                                        {
+                                            bestOpponentHeroTarget = opponentHeroes
+                                                .Where(h => h.Location.LocationIsInRange(playerHero.Location, 125))
+                                                .OrderBy(h => h.Health)
+                                                .First();
+                                        }
+                                        playerHero.Attack(bestOpponentHeroTarget.Id);
+                                    }
                                     else if (opponentUnits.Any() && opponentUnits.Any(u => Math.Abs(u.Location.X - opponentTowerLocation.X) > 150))
                                         playerHero.AttemptToLastHit(playerUnits, opponentUnits);
                                     else
                                         playerHero.Wait();
-                                    // TODO: Special attacks if off-cooldown
                                 }
                             }
                         }
